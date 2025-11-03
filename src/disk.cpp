@@ -2,6 +2,7 @@
 #include "builder.h"
 #include "disk_util.h"
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -25,12 +26,6 @@ namespace stkq {
         uint32_t emb_dim = final_index_->getBaseEmbDim();
         uint32_t loc_dim = final_index_->getBaseLocDim();
 
-        std::cout << "node size: " << node_num << std::endl;
-        std::cout << "max aplha range len: " << max_aplha_range_len << std::endl;
-        std::cout << "max neighbor len: " << max_nbr_len << std::endl;
-        std::cout << "enter point size: " << enterpoint_set_size << std::endl;
-        std::cout << "emb dim: " << emb_dim << std::endl;
-        std::cout << "loc dim: " << loc_dim << std::endl;
 
         for (unsigned i = 0; i < final_index_->getBaseLen(); i++)
         {
@@ -81,6 +76,18 @@ namespace stkq {
         uint32_t nbr_data_size = sizeof(uint32_t)+2*max_aplha_range_len*sizeof(int8_t);
 
         // node data
+        size_t max_data_size = (emb_dim * sizeof(float)) + 
+                                (loc_dim * sizeof(float)) +
+                                sizeof(uint32_t) +
+                                (max_nbr_len * (sizeof(uint32_t) + 2*max_aplha_range_len*sizeof(int8_t)));
+        size_t max_aligned_size = disk::align_to_page_size(max_data_size);
+        std::cout << "node size: " << node_num << std::endl;
+        std::cout << "max aplha range len: " << max_aplha_range_len << std::endl;
+        std::cout << "max neighbor len: " << max_nbr_len << std::endl;
+        std::cout << "enter point size: " << enterpoint_set_size << std::endl;
+        std::cout << "emb dim: " << emb_dim << std::endl;
+        std::cout << "loc dim: " << loc_dim << std::endl;
+        std::cout<< "max data size: " << max_data_size << "B max aligned size: " << max_aligned_size << "B" << std::endl;
         for (size_t i = 0; i < node_num; i ++) {
             disk::NodeData data;
             data.emb.resize(emb_dim);
@@ -112,11 +119,10 @@ namespace stkq {
                            (data.loc.size() * sizeof(float)) +
                            sizeof(data.nnbr) +
                            (data.nbrs.size() * nbr_data_size);
-            
-            size_t aligned_size = disk::align_to_page_size(raw_data_size);
-            size_t padding_size = aligned_size - raw_data_size;
+            assert(raw_data_size <= max_data_size);
+            size_t padding_size = max_aligned_size - raw_data_size;
 
-            std::vector<char> buffer(aligned_size, 0);
+            std::vector<char> buffer(max_aligned_size, 0);
             char* current_ptr = buffer.data();
 
             // 复制数据到缓冲区

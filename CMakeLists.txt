@@ -4,9 +4,20 @@ cmake_minimum_required(VERSION 2.8)
 #set(CMAKE_CXX_COMPILER "/usr/local/bin/g++-7")
 project(STKQ)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 include_directories(${PROJECT_SOURCE_DIR}/include)
+
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+    message(STATUS "Enabling AddressSanitizer (ASan)")
+
+    # GCC / Clang 支持的 ASan 编译选项
+    set(SANITIZE_FLAGS "-fsanitize=address -fno-omit-frame-pointer -g")
+
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${SANITIZE_FLAGS}")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZE_FLAGS}")
+    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} ${SANITIZE_FLAGS}")
+endif()
 
 #OpenMP
 find_package(OpenMP REQUIRED)
@@ -34,7 +45,7 @@ endif()
 #include_directories(F:/Python/include)
 #link_libraries(F:/Python/libs/python38.lib)
 
-add_definitions (-std=c++14 -O2 -lboost -march=native -Wall -DINFO)
+add_compile_options(-march=native -Wall -g -DINFO)
 # add_definitions(-std=c++14)
 add_subdirectory(src)
 add_subdirectory(test)
