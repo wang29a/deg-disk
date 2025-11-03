@@ -1,3 +1,4 @@
+#include "policy.h"
 #include <builder.h>
 #include <set_para.h>
 #include <iostream>
@@ -222,6 +223,7 @@ void DEG(stkq::Parameters &parameters)
     std::string query_alpha_path = parameters.get<std::string>("query_alpha_path");
     std::string ground_path = parameters.get<std::string>("ground_path");
     std::string graph_file = parameters.get<std::string>("graph_file");
+    std::string disk_index_file = parameters.get<std::string>("disk_index_file");
     auto *builder = new stkq::IndexBuilder(num_threads, parameters.get<float>("max_emb_distance"), parameters.get<float>("max_spatial_distance"));
     if (parameters.get<std::string>("exc_type") == "build")
     {
@@ -240,6 +242,52 @@ void DEG(stkq::Parameters &parameters)
         builder->load_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
         builder->peak_memory_footprint();
         builder->search(stkq::TYPE::SEARCH_ENTRY_NONE, stkq::TYPE::ROUTER_DEG, stkq::TYPE::L_SEARCH_ASCEND, parameters);
+        builder->peak_memory_footprint();
+    }
+    else if (parameters.get<std::string>("exc_type") == "disk")
+    {
+        // build disk indx
+        builder->load(&base_emb_path[0], &base_loc_path[0], &query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters);
+        builder->peak_memory_footprint();
+        builder->load_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
+        builder->peak_memory_footprint();
+        builder->save_graph_disk(stkq::TYPE::INDEX_DEG, &disk_index_file[0]);
+        builder->peak_memory_footprint();
+    }
+    else
+    {
+        std::cout << "exc_type input error!" << std::endl;
+    }
+}
+
+void DISK(stkq::Parameters &parameters)
+{
+    const unsigned num_threads = parameters.get<unsigned>("n_threads");
+    std::string base_emb_path = parameters.get<std::string>("base_emb_path");
+    std::string base_loc_path = parameters.get<std::string>("base_loc_path");
+    std::string query_emb_path = parameters.get<std::string>("query_emb_path");
+    std::string query_loc_path = parameters.get<std::string>("query_loc_path");
+    std::string query_alpha_path = parameters.get<std::string>("query_alpha_path");
+    std::string ground_path = parameters.get<std::string>("ground_path");
+    std::string graph_file = parameters.get<std::string>("graph_file");
+    auto *builder = new stkq::IndexBuilder(num_threads, parameters.get<float>("max_emb_distance"), parameters.get<float>("max_spatial_distance"));
+    if (parameters.get<std::string>("exc_type") == "build")
+    {
+        // build
+        builder->load(&base_emb_path[0], &base_loc_path[0], &query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters)
+            ->init(stkq::INIT_DEG)
+            ->save_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
+        std::cout << "Build cost: " << builder->GetBuildTime().count() << "s" << std::endl;
+    }
+
+    else if (parameters.get<std::string>("exc_type") == "search")
+    {
+        // search
+        builder->load(&base_emb_path[0], &base_loc_path[0], &query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters);
+        builder->peak_memory_footprint();
+        builder->load_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
+        builder->peak_memory_footprint();
+        // builder->search_disk(stkq::TYPE::SEARCH_ENTRY_NONE, stkq::TYPE::ROUTER_DEG, stkq::TYPE::L_SEARCH_ASCEND, parameters);
         builder->peak_memory_footprint();
     }
     else
@@ -262,8 +310,8 @@ int main(int argc, char **argv)
     }
 
     stkq::Parameters parameters;
-    std::string dataset_root = R"(/mnt/hdd/yinziqi/yinziqi/graphann-tkq/dataset/)";
-    std::string index_path = R"(/mnt/hdd/yinziqi/yinziqi/graphann-tkq/saved_index/)";
+    std::string dataset_root = R"(/home/gongwei/deg/dataset/)";
+    std::string index_path = R"(/home/gongwei/deg/saved_index/)";
     parameters.set<std::string>("dataset_root", dataset_root);
     parameters.set<std::string>("index_path", index_path);
     parameters.set<unsigned>("n_threads", 8);
@@ -285,7 +333,9 @@ int main(int argc, char **argv)
     std::cout << "max_emb_distance: " << maximum_emb_distance << std::endl;
     std::cout << "max_spatial_distance: " << maximum_spatial_distance << std::endl;
     std::string graph_file(alg + "_" + dataset + ".index");
+    std::string disk_index_file(alg + "_" + dataset + "_disk" + ".index");
     parameters.set<std::string>("graph_file", index_path + graph_file);
+    parameters.set<std::string>("disk_index_file", index_path + disk_index_file);
     parameters.set<std::string>("exc_type", exc_type);
     set_para(alg, dataset, parameters);
 
@@ -306,6 +356,10 @@ int main(int argc, char **argv)
         baseline4(parameters);
     }
     else if (alg == "deg")
+    {
+        DEG(parameters);
+    }
+    else if (alg == "disk")
     {
         DEG(parameters);
     }
