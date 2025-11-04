@@ -92,6 +92,10 @@ namespace disk {
             auto e1 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> diff = e1 - s1;
             std::cout << "search time: " << diff.count() / query_data.getQueryLen() << std::endl;
+            std::cout << "DistCount: " << getDistCount() << std::endl;
+            std::cout << "HopCount: " << getHopCount() << std::endl;
+            resetDistCount();
+            resetHopCount();
             std::cout << "qps: " << query_data.getQueryLen() / diff.count() << std::endl;
             int cnt = 0;
             float recall = 0;
@@ -213,10 +217,12 @@ namespace disk {
             float cur_e_d =
                 get_E_Dist()->
                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+            addDistCount();
 
             float cur_s_d = 
                 get_S_Dist()->
                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
+            addDistCount();
 
             float cur_dist = alpha_ * cur_e_d + (1 - alpha_) * cur_s_d;
 
@@ -248,6 +254,7 @@ namespace disk {
 
             auto candidate_id = candidate.GetId();
             candidates.pop();
+            addHopCount();
             load.emplace_back(candidate_id);
 
             // 加载数据 目标是邻居
@@ -365,6 +372,7 @@ namespace disk {
                             get_S_Dist()->
                                 compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
 
+            addDistCount();
                         if ((1 - alpha_) * s_d >= threshold)
                         {
                             continue;
@@ -374,6 +382,7 @@ namespace disk {
                             get_E_Dist()->
                                 compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
 
+            addDistCount();
                         float d = alpha_ * e_d + (1 - alpha_) * s_d;
 
                         if (threshold > d)
@@ -394,11 +403,13 @@ namespace disk {
                                 get_S_Dist()->
                                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
 
+            addDistCount();
                             if ((1 - alpha_) * s_d >= threshold)
                             {
                                 continue;
                             }
 
+            addDistCount();
                             float e_d =
                                 get_E_Dist()->
                                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
@@ -418,6 +429,7 @@ namespace disk {
                                 get_E_Dist()->
                                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
 
+            addDistCount();
                             if (alpha_ * e_d >= threshold)
                             {
                                 continue;
@@ -427,6 +439,7 @@ namespace disk {
                                 get_S_Dist()->
                                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
 
+            addDistCount();
                             float d = alpha_ * e_d + (1 - alpha_) * s_d;
 
                             if (threshold > d)
@@ -445,10 +458,12 @@ namespace disk {
                         get_E_Dist()->
                             compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
 
+            addDistCount();
                     float s_d = 
                         get_S_Dist()->
                             compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
 
+            addDistCount();
                     float d = alpha_ * e_d + (1 - alpha_) * s_d;
                     result.emplace(id, d);
                     candidates.emplace(id, d);

@@ -187,6 +187,36 @@ namespace disk {
 
         void setup_sector_scratch();
 
+        unsigned int getDistCount() const
+        {
+            return dist_count;
+        }
+
+        void resetDistCount()
+        {
+            dist_count = 0;
+        }
+
+        void addDistCount()
+        {
+            dist_count += 1;
+        }
+
+        unsigned int getHopCount() const
+        {
+            return hop_count;
+        }
+
+        void resetHopCount()
+        {
+            hop_count = 0;
+        }
+
+        void addHopCount()
+        {
+            hop_count += 1;
+        }
+
     private:
         
         uint32_t _max_node_len = 0;
@@ -214,6 +244,9 @@ namespace disk {
 
         char *sector_scratch = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
         size_t sector_idx = 0;          // index of next [SECTOR_LEN] scratch to use
+
+        unsigned dist_count = 0;
+        unsigned hop_count = 0;
 
     };
     void execute_io(io_context_t ctx, int fd, std::vector<AlignedRead> &read_reqs, uint64_t n_retries = 0);
