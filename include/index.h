@@ -977,11 +977,9 @@ namespace stkq
         class DEG_FurtherFirst
         {
         public:
-            DEG_FurtherFirst(DEGNode *node, float emb_distance, float geo_distance, float dist) : node_(node), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) {}
-            inline float GetEmbDistance() const { return emb_distance_; }
-            inline float GetLocDistance() const { return geo_distance_; }
+            DEG_FurtherFirst(unsigned id, float dist) : id_(id), dist_(dist) {}
+            inline unsigned GetId() const { return id_; }
             inline float GetDistance() const { return dist_; }
-            inline DEGNode *GetNode() const { return node_; }
             bool operator<(const DEG_FurtherFirst &n) const
             {
                 return (dist_ < n.GetDistance());
@@ -989,20 +987,16 @@ namespace stkq
             }
 
         private:
-            DEGNode *node_;
-            float emb_distance_;
-            float geo_distance_;
+            unsigned id_;
             float dist_;
         };
 
         class DEG_CloserFirst
         {
         public:
-            DEG_CloserFirst(DEGNode *node, float emb_distance, float geo_distance, float dist) : node_(node), emb_distance_(emb_distance), geo_distance_(geo_distance), dist_(dist) {}
-            inline float GetEmbDistance() const { return emb_distance_; }
-            inline float GetLocDistance() const { return geo_distance_; }
+            DEG_CloserFirst(unsigned id, float dist) : id_(id), dist_(dist) {}
+            inline unsigned GetId() const { return id_; }
             inline float GetDistance() const { return dist_; }
-            inline DEGNode *GetNode() const { return node_; }
             bool operator<(const DEG_CloserFirst &n) const
             {
                 return (dist_ > n.GetDistance());
@@ -1010,9 +1004,7 @@ namespace stkq
             }
 
         private:
-            DEGNode *node_;
-            float emb_distance_;
-            float geo_distance_;
+            unsigned id_;
             float dist_;
         };
 

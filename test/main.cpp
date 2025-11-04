@@ -1,6 +1,8 @@
 #include "policy.h"
 #include <builder.h>
+#include <memory>
 #include <set_para.h>
+#include <disk.h>
 #include <iostream>
 
 void HNSW(stkq::Parameters &parameters)
@@ -263,30 +265,22 @@ void DEG(stkq::Parameters &parameters)
 void DISK(stkq::Parameters &parameters)
 {
     const unsigned num_threads = parameters.get<unsigned>("n_threads");
-    std::string base_emb_path = parameters.get<std::string>("base_emb_path");
-    std::string base_loc_path = parameters.get<std::string>("base_loc_path");
     std::string query_emb_path = parameters.get<std::string>("query_emb_path");
     std::string query_loc_path = parameters.get<std::string>("query_loc_path");
     std::string query_alpha_path = parameters.get<std::string>("query_alpha_path");
     std::string ground_path = parameters.get<std::string>("ground_path");
-    std::string graph_file = parameters.get<std::string>("graph_file");
+    std::string disk_index_file = parameters.get<std::string>("disk_index_file");
+    auto disk_index = std::make_shared<disk::DiskIndex>();
+    disk_index->init();
     auto *builder = new stkq::IndexBuilder(num_threads, parameters.get<float>("max_emb_distance"), parameters.get<float>("max_spatial_distance"));
-    if (parameters.get<std::string>("exc_type") == "build")
-    {
-        // build
-        builder->load(&base_emb_path[0], &base_loc_path[0], &query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters)
-            ->init(stkq::INIT_DEG)
-            ->save_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
-        std::cout << "Build cost: " << builder->GetBuildTime().count() << "s" << std::endl;
-    }
-
-    else if (parameters.get<std::string>("exc_type") == "search")
+    if (parameters.get<std::string>("exc_type") == "search")
     {
         // search
-        builder->load(&base_emb_path[0], &base_loc_path[0], &query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters);
+        disk_index->load_query_data(&query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters);
         builder->peak_memory_footprint();
-        builder->load_graph(stkq::TYPE::INDEX_DEG, &graph_file[0]);
+        disk_index->load_metadata(disk_index_file.data());
         builder->peak_memory_footprint();
+        disk_index->search();
         // builder->search_disk(stkq::TYPE::SEARCH_ENTRY_NONE, stkq::TYPE::ROUTER_DEG, stkq::TYPE::L_SEARCH_ASCEND, parameters);
         builder->peak_memory_footprint();
     }
@@ -361,7 +355,7 @@ int main(int argc, char **argv)
     }
     else if (alg == "disk")
     {
-        DEG(parameters);
+        DISK(parameters);
     }
     else
     {

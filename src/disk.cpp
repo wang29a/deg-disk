@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <cstring>
 #include <libaio.h>
+#include <set>
+#include <sys/types.h>
 
 namespace stkq {
     /* TODO
@@ -21,7 +23,7 @@ namespace stkq {
         std::fstream out(graph_file, std::ios::binary | std::ios::out);
         // type == INDEX_DEG
         uint32_t node_num = final_index_->getBaseLen();
-        uint32_t max_aplha_range_len = 0;
+        uint32_t max_alpha_range_len = 0;
         uint32_t max_nbr_len = 0;
         uint32_t enterpoint_set_size = final_index_->enterpoint_set.size();
         uint32_t emb_dim = final_index_->getBaseEmbDim();
@@ -38,7 +40,7 @@ namespace stkq {
                 std::vector<std::pair<int8_t, int8_t>> &use_range = neighbor.active_range;
 
                 unsigned range_size = use_range.size();
-                max_aplha_range_len = std::max(max_aplha_range_len, range_size);
+                max_alpha_range_len = std::max(max_alpha_range_len, range_size);
             }
         }
         
@@ -49,14 +51,16 @@ namespace stkq {
             unsigned node_id = final_index_->enterpoint_set[i];
             enterpoint_set.emplace_back(node_id);
         }
+        std::set<uint32_t> ep_set{enterpoint_set.begin(), enterpoint_set.end()};
         //meta data
         size_t raw_meta_data_size = 
-            sizeof(node_num) + sizeof(max_nbr_len) + sizeof(max_aplha_range_len) +
+            sizeof(node_num) + sizeof(max_nbr_len) + sizeof(max_alpha_range_len) +
             sizeof(enterpoint_set_size) + sizeof(emb_dim) + sizeof(loc_dim) + (sizeof(uint32_t)*enterpoint_set_size); 
         size_t aligned_size = disk::align_to_page_size(raw_meta_data_size);
         size_t padding_size = aligned_size - raw_meta_data_size;
         std::vector<char> buffer(aligned_size, 0);
         char* current_ptr = buffer.data();
+        std::cout<<aligned_size << " metadata size" << std::endl;
 
         // 复制数据到缓冲区
         auto copy_data = [&](const void* src, size_t size) {
@@ -66,7 +70,7 @@ namespace stkq {
 
         copy_data(&node_num, sizeof(uint32_t));
         copy_data(&max_nbr_len, sizeof(uint32_t));
-        copy_data(&max_aplha_range_len, sizeof(uint32_t));
+        copy_data(&max_alpha_range_len, sizeof(uint32_t));
         copy_data(&enterpoint_set_size, sizeof(uint32_t));
         copy_data(&emb_dim, sizeof(uint32_t));
         copy_data(&loc_dim, sizeof(uint32_t));
@@ -74,22 +78,25 @@ namespace stkq {
 
         out.write(buffer.data(), aligned_size);
 
-        uint32_t nbr_data_size = sizeof(uint32_t)+2*max_aplha_range_len*sizeof(int8_t);
+        uint32_t nbr_data_size = sizeof(uint32_t)+2*max_alpha_range_len*sizeof(int8_t);
 
         // node data
         size_t max_data_size = (emb_dim * sizeof(float)) + 
                                 (loc_dim * sizeof(float)) +
                                 sizeof(uint32_t) +
-                                (max_nbr_len * (sizeof(uint32_t) + 2*max_aplha_range_len*sizeof(int8_t)));
+                                (max_nbr_len * (sizeof(uint32_t) + 2*max_alpha_range_len*sizeof(int8_t)));
         size_t max_aligned_size = disk::align_to_page_size(max_data_size);
         std::cout << "node size: " << node_num << std::endl;
-        std::cout << "max aplha range len: " << max_aplha_range_len << std::endl;
+        std::cout << "max aplha range len: " << max_alpha_range_len << std::endl;
         std::cout << "max neighbor len: " << max_nbr_len << std::endl;
         std::cout << "enter point size: " << enterpoint_set_size << std::endl;
         std::cout << "emb dim: " << emb_dim << std::endl;
         std::cout << "loc dim: " << loc_dim << std::endl;
         std::cout<< "max data size: " << max_data_size << "B max aligned size: " << max_aligned_size << "B" << std::endl;
         for (size_t i = 0; i < node_num; i ++) {
+            if (ep_set.find(i) != ep_set.end()) {
+                std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out.tellp()) << std::endl;
+            }
             disk::NodeData data;
             data.emb.resize(emb_dim);
             data.loc.resize(loc_dim);
@@ -108,7 +115,7 @@ namespace stkq {
                 std::vector<std::pair<int8_t, int8_t>> &use_range = neighbor.active_range;
 
                 unsigned range_size = use_range.size();
-                data.nbrs[j].alpha_range.resize(max_aplha_range_len*2);
+                data.nbrs[j].alpha_range.resize(max_alpha_range_len*2);
                 for (size_t k = 0; k < range_size; k ++) {
                     int8_t x = use_range[k].first;
                     int8_t y = use_range[k].second;
@@ -116,8 +123,8 @@ namespace stkq {
                     data.nbrs[j].alpha_range[2*k+1] = y;
                 }
             }
-            size_t raw_data_size = (data.emb.size() * sizeof(float)) + 
-                           (data.loc.size() * sizeof(float)) +
+            size_t raw_data_size = (emb_dim * sizeof(float)) + 
+                           (loc_dim * sizeof(float)) +
                            sizeof(data.nnbr) +
                            (data.nbrs.size() * nbr_data_size);
             assert(raw_data_size <= max_data_size);
@@ -134,13 +141,27 @@ namespace stkq {
             // 复制向量数据
             copy_data(data.emb.data(), data.emb.size() * sizeof(float));
             copy_data(data.loc.data(), data.loc.size() * sizeof(float));
+            // if (ep_set.find(i) != ep_set.end()) {
+            //     for (size_t k = 0; k < 20; k ++) {
+            //         std::cout<< *(float*)(buffer.data()+(size_t)k*sizeof(float)) << " ";
+            //     }
+            //     std::cout<<std::endl;
+            //     for (size_t k = 0; k < 20; k ++) {
+            //         std::cout<< *(float*)(buffer.data()+(size_t)k*sizeof(float)+(size_t)emb_dim*sizeof(float)) << " ";
+            //         std::cout<< data.loc[k] << " ";
+            //     }
+            //     std::cout<<std::endl;
+            // }
 
             copy_data(&data.nnbr, sizeof(data.nnbr));
 
             // 复制邻居数据
-            copy_data(data.nbrs.data(), nbr_data_size);
+            for (auto &nbr : data.nbrs) {
+                copy_data(&nbr.id, sizeof(uint32_t));
+                copy_data(nbr.alpha_range.data(), nbr.alpha_range.size());
+            }
 
-            out.write(buffer.data(), aligned_size);
+            out.write(buffer.data(), max_aligned_size);
         }
 
         out.close();
@@ -153,7 +174,7 @@ namespace stkq {
 namespace disk {
     typedef struct io_event io_event_t;
     typedef struct iocb iocb_t;
-    void execute_io(io_context_t ctx, int fd, std::vector<AlignedRead> &read_reqs, uint64_t n_retries = 0)
+    void execute_io(io_context_t ctx, int fd, std::vector<AlignedRead> &read_reqs, uint64_t n_retries)
     {
     #ifdef DEBUG
         for (auto &req : read_reqs)
@@ -312,21 +333,20 @@ namespace disk {
         setQueryEmbData(query_emb);
         setQueryLen(query_num);
         setQueryEmbDim(query_emb_dim);
-        assert(index->getQueryEmbData() != nullptr && index->getQueryLen() != 0 && index->getQueryEmbDim() != 0);
-        assert(index->getBaseEmbDim() == index->getQueryEmbDim());
+        assert(getQueryEmbData() != nullptr && getQueryLen() != 0 && getQueryEmbDim() != 0);
         float *query_loc = nullptr;
         unsigned query_loc_num{};
         unsigned query_loc_dim{};
         load_data(query_loc_file, query_loc, query_loc_num, query_loc_dim);
         setQueryLocData(query_loc);
         setQueryLocDim(query_loc_dim);
-        assert(query_loc_num == index->getQueryLen() && query_loc_dim == index->getBaseLocDim());
+        assert(query_loc_num == getQueryLen());
         float *query_alpha = nullptr;
         unsigned query_alpha_num{};
         unsigned query_alpha_dim{};
         load_data(query_alpha_file, query_alpha, query_alpha_num, query_alpha_dim);
         setQueryWeightData(query_alpha);
-        assert(query_loc_num == index->getQueryLen());
+        assert(query_loc_num == getQueryLen());
         unsigned *ground_data = nullptr;
         unsigned ground_num{};
         unsigned ground_dim{};
@@ -334,7 +354,7 @@ namespace disk {
         setGroundData(ground_data);
         setGroundLen(ground_num);
         setGroundDim(ground_dim);
-        assert(index->getGroundData() != nullptr && index->getGroundLen() != 0 && index->getGroundDim() != 0);
+        assert(getGroundData() != nullptr && getGroundLen() != 0 && getGroundDim() != 0);
         std::cout << "query data len : " << getQueryLen() << std::endl;
         std::cout << "query data emb dim : " << getQueryEmbDim() << std::endl;
         std::cout << "query data loc dim : " << getQueryLocDim() << std::endl;
