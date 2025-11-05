@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <omp.h>
 #include <ostream>
 #include <queue>
 #include <vector>
@@ -66,6 +67,7 @@ namespace disk {
         std::set<unsigned> visited;
         unsigned L = 0;
         visited.insert(L);
+        k_ = K;
         for (unsigned t = 0; t < 20; t++)
         {
 
@@ -83,7 +85,6 @@ namespace disk {
             res.resize(query_data.getQueryLen());
             //  #pragma omp parallel for
             for (unsigned i = 0; i < query_data.getQueryLen(); i++)
-            //                for (unsigned i = 0; i < 1000; i++)
             {
                 alpha_ = query_data.getQueryWeightData()[i];
                 std::vector<stkq::Index::Neighbor> pool;
@@ -253,6 +254,7 @@ namespace disk {
             }
 
             auto candidate_id = candidate.GetId();
+            // std::cout<< candidate.GetDistance() << std::endl;
             candidates.pop();
             addHopCount();
             load.emplace_back(candidate_id);
