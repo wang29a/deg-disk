@@ -147,9 +147,9 @@ namespace disk {
         
         void SearchAtLayer(unsigned qnode,
                             stkq::Index::VisitedList *visited_list,
-                            std::priority_queue<stkq::Index::DEG_FurtherFirst> &result);
+                            std::priority_queue<stkq::Index::DEG_FurtherFirst> &result, QueryStats *stats);
         void RouteInner(unsigned int query, std::vector<stkq::Index::Neighbor> &pool,
-                        std::vector<unsigned int> &res);
+                        std::vector<unsigned int> &res, QueryStats *stats);
 
         void open_file();
 

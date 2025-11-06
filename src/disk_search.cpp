@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <iomanip>
 #include <omp.h>
 #include <ostream>
 #include <queue>
@@ -84,20 +85,22 @@ namespace disk {
             res.clear();
             res.resize(query_data.getQueryLen());
             //  #pragma omp parallel for
+            QueryStats *stats = new QueryStats[query_data.getQueryLen()];
             for (unsigned i = 0; i < query_data.getQueryLen(); i++)
             {
                 alpha_ = query_data.getQueryWeightData()[i];
                 std::vector<stkq::Index::Neighbor> pool;
-                RouteInner(i, pool, res[i]);
+                RouteInner(i, pool, res[i], stats + i);
             }
             auto e1 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> diff = e1 - s1;
+            std::cout << "search latency: " << diff.count()<< std::endl;
             std::cout << "search time: " << diff.count() / query_data.getQueryLen() << std::endl;
+            std::cout << "qps: " << query_data.getQueryLen() / diff.count() << std::endl;
             std::cout << "DistCount: " << getDistCount() << std::endl;
             std::cout << "HopCount: " << getHopCount() << std::endl;
             resetDistCount();
             resetHopCount();
-            std::cout << "qps: " << query_data.getQueryLen() / diff.count() << std::endl;
             int cnt = 0;
             float recall = 0;
             for (unsigned i = 0; i < query_data.getQueryLen(); i++)
@@ -122,6 +125,24 @@ namespace disk {
             }
             float acc = recall / query_data.getQueryLen();
             std::cout << K << " NN accuracy: " << acc << std::endl;
+            auto query_num = query_data.getQueryLen();
+            auto mean_latency = get_mean_stats<float>(
+                stats, query_num, [](const QueryStats &stats) { return stats.total_us; });
+
+            // auto latency_999 = get_percentile_stats<float>(
+            //     stats, query_num, 0.999, [](const QueryStats &stats) { return stats.total_us; });
+
+            auto mean_ios = get_mean_stats<uint32_t>(stats, query_num,
+                                                            [](const QueryStats &stats) { return stats.n_ios; });
+
+            auto mean_cpuus = get_mean_stats<float>(stats, query_num,
+                                                            [](const QueryStats &stats) { return stats.cpu_us; });
+
+            auto mean_io_nbr_us = get_mean_stats<float>(stats, query_num,
+                                                            [](const QueryStats &stats) { return stats.io_nbr_us; });
+            auto mean_io_vec_us = get_mean_stats<float>(stats, query_num,
+                                                            [](const QueryStats &stats) { return stats.io_vec_us; });
+        std::cout << mean_io_nbr_us << std::setw(16) << mean_io_vec_us << std::setw(16) << mean_cpuus << std::endl;
         }
         // e = std::chrono::high_resolution_clock::now();
         std::cout << "__SEARCH FINISH__" << std::endl;
@@ -130,7 +151,7 @@ namespace disk {
     }
 
     void DiskIndex::RouteInner(unsigned int query, std::vector<stkq::Index::Neighbor> &pool,
-                                std::vector<unsigned int> &res)
+                                std::vector<unsigned int> &res, QueryStats *stats)
     {
         /*
             需要load的请求
@@ -145,7 +166,7 @@ namespace disk {
         std::priority_queue<stkq::Index::DEG_FurtherFirst> result;
         std::priority_queue<stkq::Index::DEG_CloserFirst> tmp;
 
-        SearchAtLayer(query, visited_list, result);
+        SearchAtLayer(query, visited_list, result, stats);
 
         // std::cout<< "result size: " << result.size() << std::endl;
 
@@ -170,8 +191,9 @@ namespace disk {
 
     void DiskIndex::SearchAtLayer(unsigned qnode,
                                     stkq::Index::VisitedList *visited_list,
-                                    std::priority_queue<stkq::Index::DEG_FurtherFirst> &result)
+                                    std::priority_queue<stkq::Index::DEG_FurtherFirst> &result, QueryStats *stats)
     {
+        const uint32_t beam_width = 4;
         const auto L = search_l_;
 
         std::priority_queue<stkq::Index::DEG_CloserFirst> candidates;
@@ -179,9 +201,14 @@ namespace disk {
 
         bool m_first = false;
 
+        Timer io_timer, cpu_timer;
+
         std::vector<unsigned> load;
+        load.reserve(beam_width * 2);
         std::vector<std::pair<unsigned, char*>> load_datas;
+        load_datas.reserve((beam_width * 2));
         std::vector<AlignedRead> read_reqs;
+        read_reqs.reserve(beam_width * 2);
         sector_idx = 0;
         const uint64_t num_sectors_per_node =
             _nnodes_per_sector > 0 ? 1 : DIV_ROUND_UP(_max_node_len, defaults::SECTOR_LEN);
@@ -236,10 +263,10 @@ namespace disk {
         }
         auto top1 = candidates.top();
 
-        // while (!candidates.empty()) {
-        //     candidates.pop();
-        // }
-        // candidates.push(top1);
+        while (!candidates.empty()) {
+            candidates.pop();
+        }
+        candidates.push(top1);
 
         while (!candidates.empty())
         {
@@ -247,17 +274,26 @@ namespace disk {
             load_datas.clear();
             read_reqs.clear();
             sector_idx = 0;
-            const stkq::Index::DEG_CloserFirst &candidate = candidates.top();
-            float lower_bound = result.top().GetDistance();
-            if (candidate.GetDistance() > lower_bound) {
+            uint32_t num_seen = 0;
+            bool flag = false;
+            while (!candidates.empty() && load.size() < beam_width && num_seen < beam_width) {
+                const stkq::Index::DEG_CloserFirst &candidate = candidates.top();
+                num_seen ++;
+                float lower_bound = result.top().GetDistance();
+                if (candidate.GetDistance() > lower_bound) {
+                    flag = true;
+                    break;
+                }
+
+                auto candidate_id = candidate.GetId();
+                // std::cout<< candidate.GetDistance() << std::endl;
+                candidates.pop();
+                addHopCount();
+                load.emplace_back(candidate_id);
+            }
+            if (flag) {
                 break;
             }
-
-            auto candidate_id = candidate.GetId();
-            // std::cout<< candidate.GetDistance() << std::endl;
-            candidates.pop();
-            addHopCount();
-            load.emplace_back(candidate_id);
 
             // 加载数据 目标是邻居
             if (!load.empty()) {
@@ -273,7 +309,9 @@ namespace disk {
                                             num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
                 }
 
+                io_timer.reset();
                 execute_io(ctx_, file_desc_, read_reqs);
+                stats->io_nbr_us += (float)io_timer.elapsed();
             }
 
             load.clear();
@@ -352,7 +390,9 @@ namespace disk {
                                             num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
                 }
 
+                io_timer.reset();
                 execute_io(ctx_, file_desc_, read_reqs);
+                stats->io_vec_us += (float)io_timer.elapsed();
             }
             for (auto &data : load_datas) {
                 auto id = data.first;
@@ -370,9 +410,11 @@ namespace disk {
                     if (m_first) {
                         float threshold = result.top().GetDistance();
 
+                        cpu_timer.reset();
                         float s_d = 
                             get_S_Dist()->
                                 compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
+                        stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
                         if ((1 - alpha_) * s_d >= threshold)
@@ -380,9 +422,11 @@ namespace disk {
                             continue;
                         }
 
+                        cpu_timer.reset();
                         float e_d =
                             get_E_Dist()->
                                 compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+                        stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
                         float d = alpha_ * e_d + (1 - alpha_) * s_d;
@@ -401,9 +445,11 @@ namespace disk {
 
                         if (alpha_ <= 0.5)
                         {
+                            cpu_timer.reset();
                             float s_d = 
                                 get_S_Dist()->
                                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
+                        stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
                             if ((1 - alpha_) * s_d >= threshold)
@@ -412,11 +458,12 @@ namespace disk {
                             }
 
             addDistCount();
+                            cpu_timer.reset();
                             float e_d =
                                 get_E_Dist()->
                                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
                             float d = alpha_ * e_d + (1 - alpha_) * s_d;
-
+                        stats->cpu_us += (float)cpu_timer.elapsed();
                             if (threshold > d)
                             {
                                 result.emplace(id, d);
@@ -427,9 +474,11 @@ namespace disk {
                         }
                         else
                         {
+                            cpu_timer.reset();
                             float e_d =
                                 get_E_Dist()->
                                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+                        stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
                             if (alpha_ * e_d >= threshold)
@@ -437,9 +486,11 @@ namespace disk {
                                 continue;
                             }
 
+                            cpu_timer.reset();
                             float s_d = 
                                 get_S_Dist()->
                                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
+                        stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
                             float d = alpha_ * e_d + (1 - alpha_) * s_d;
@@ -456,14 +507,18 @@ namespace disk {
                 }
                 else
                 {
+                    cpu_timer.reset();
                     float e_d =
                         get_E_Dist()->
                             compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+                    stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
+                    cpu_timer.reset();
                     float s_d = 
                         get_S_Dist()->
                             compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
+                    stats->cpu_us += (float)cpu_timer.elapsed();
 
             addDistCount();
                     float d = alpha_ * e_d + (1 - alpha_) * s_d;
@@ -473,8 +528,6 @@ namespace disk {
                         result.pop();
                 }
             }
-
-
         }
     }
 }

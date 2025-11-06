@@ -2,9 +2,11 @@
 
 #include "defaults.h"
 #include <cassert>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <stdlib.h>
 #include <iostream>
 #include <vector>
@@ -89,4 +91,63 @@ struct NodeData {
     uint32_t nnbr;
     std::vector<NbrData> nbrs;
 };
+struct QueryStats
+{
+    float total_us = 0; // total time to process query in micros
+    float io_nbr_us = 0;    // total time spent in IO
+    float io_vec_us = 0;    // total time spent in IO
+    float cpu_us = 0;   // total time spent in CPU
+
+    unsigned n_4k = 0;         // # of 4kB reads
+    unsigned n_8k = 0;         // # of 8kB reads
+    unsigned n_12k = 0;        // # of 12kB reads
+    unsigned n_ios = 0;        // total # of IOs issued
+    unsigned read_size = 0;    // total # of bytes read
+    unsigned n_cmps_saved = 0; // # cmps saved
+    unsigned n_cmps = 0;       // # cmps
+    unsigned n_cache_hits = 0; // # cache_hits
+    unsigned n_hops = 0;       // # search hops
+};
+class Timer
+{
+    typedef std::chrono::high_resolution_clock _clock;
+    std::chrono::time_point<_clock> check_point;
+
+  public:
+    Timer() : check_point(_clock::now())
+    {
+    }
+
+    void reset()
+    {
+        check_point = _clock::now();
+    }
+
+    long long elapsed() const
+    {
+        return std::chrono::duration_cast<std::chrono::microseconds>(_clock::now() - check_point).count();
+    }
+
+    float elapsed_seconds() const
+    {
+        return (float)elapsed() / 1000000.0f;
+    }
+
+    std::string elapsed_seconds_for_step(const std::string &step) const
+    {
+        return std::string("Time for ") + step + std::string(": ") + std::to_string(elapsed_seconds()) +
+               std::string(" seconds");
+    }
+};
+
+template <typename T>
+inline double get_mean_stats(QueryStats *stats, uint64_t len, const std::function<T(const QueryStats &)> &member_fn)
+{
+    double avg = 0;
+    for (uint64_t i = 0; i < len; i++)
+    {
+        avg += (double)member_fn(stats[i]);
+    }
+    return avg / len;
+}
 }
