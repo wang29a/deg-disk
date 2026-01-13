@@ -24,6 +24,7 @@ namespace disk {
 #define READ_U64(stream, val) stream.read((char *)&val, sizeof(uint64_t))
 #define READ_U32(stream, val) stream.read((char *)&val, sizeof(uint32_t))
 #define READ_INT8(stream, val) stream.read((char *)&val, sizeof(int8_t))
+#define READ_F32(stream, val) stream.read((char *)&val, sizeof(float))
 // NOTE :: all 3 fields must be 512-aligned
 struct AlignedRead
 {

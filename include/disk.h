@@ -1,8 +1,12 @@
 
 #include "disk_util.h"
 #include "index.h"
+#include "nbr/abstract_nbr.h"
+#include "nbr/nbr.h"
+#include "utils.h"
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <libaio.h>
 #include <fcntl.h>
 #include <libaio.h>
@@ -136,7 +140,7 @@ namespace disk {
             }
             aligned_free((void *)emb_scratch);
             aligned_free((void *)loc_scratch);
-            aligned_free((void *)sector_scratch);
+            // aligned_free((void *)sector_scratch);
         }
         
         void init();
@@ -187,6 +191,8 @@ namespace disk {
 
         void setup_sector_scratch();
 
+        void init_query_buf(pipeann::QueryBuffer<float> &buf);
+
         unsigned int getDistCount() const
         {
             return dist_count;
@@ -228,6 +234,8 @@ namespace disk {
         uint32_t _num_points = 0;
         uint32_t emb_dim_ = 0, loc_dim_ = 0;
         uint64_t _disk_bytes_per_point = 0; // Number of bytes
+        std::shared_ptr<pipeann::PQNeighbor<float>> emb_handler_;
+        std::shared_ptr<pipeann::PQNeighbor<float>> loc_handler_;
 
         stkq::E_Distance *e_dist_;
         stkq::E_Distance *s_dist_;
@@ -242,8 +250,8 @@ namespace disk {
         float *emb_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
         float *loc_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
 
-        char *sector_scratch = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
-        size_t sector_idx = 0;          // index of next [SECTOR_LEN] scratch to use
+        char *sector_scratch_ = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
+        size_t sector_idx_ = 0;          // index of next [SECTOR_LEN] scratch to use
 
         unsigned dist_count = 0;
         unsigned hop_count = 0;

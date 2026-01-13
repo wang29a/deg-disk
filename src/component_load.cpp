@@ -118,8 +118,159 @@ namespace stkq
         std::cout << "Loaded " << num << " entries from " << filename << " with dimension " << dim << std::endl;
     }
 
+    template <typename T>
+    inline void load_vector_data(const char *filename, T *&data, unsigned &num, unsigned &dim)
+    {
+        std::ifstream in(filename, std::ios::binary);
+        if (!in.is_open())
+        {
+            std::cerr << "Error opening file " << filename << std::endl;
+            exit(-1);
+        }
+
+        // 对应 load_bin_impl 中的逻辑：
+        // 先读取 num (npts) 和 dim，再读取数据块
+        int npts_i32, dim_i32;
+
+        // 1. 读取 Header (前8个字节通常是 num 和 dim)
+        in.read(reinterpret_cast<char *>(&npts_i32), sizeof(int));
+        in.read(reinterpret_cast<char *>(&dim_i32), sizeof(int));
+
+        if (in.fail())
+        {
+            std::cerr << "Error reading header (num, dim) from " << filename << std::endl;
+            exit(-1);
+        }
+
+        num = (unsigned)npts_i32;
+        dim = (unsigned)dim_i32;
+
+        // 输出调试信息 (类似 DLOG(INFO))
+        std::cout << "Metadata: #pts = " << num << ", #dims = " << dim << std::endl;
+
+        // 2. 分配内存
+        size_t total_elements = (size_t)num * dim;
+        try
+        {
+            data = new T[total_elements];
+        }
+        catch (std::bad_alloc &)
+        {
+            std::cerr << "Memory allocation failed for data in " << filename << std::endl;
+            exit(-1);
+        }
+
+        // 3. 一次性读取所有数据块 (Bulk Read)
+        // 对应 reader.read((char *) data, npts * dim * sizeof(T));
+        in.read(reinterpret_cast<char *>(data), total_elements * sizeof(T));
+
+        if (in.fail())
+        {
+            std::cerr << "Error reading data body from " << filename << std::endl;
+            delete[] data;
+            exit(-1);
+        }
+
+        in.close();
+    }
+
     void ComponentLoad::LoadInner(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file,
                                   Parameters &parameters)
+    {
+        // base_emb_data
+        float *data_emb = nullptr;
+        unsigned n{};
+        unsigned emb_dim{};
+        load_vector_data<float>(data_emb_file, data_emb, n, emb_dim);
+        index->setBaseEmbData(data_emb);
+        index->setBaseLen(n);
+        index->setBaseEmbDim(emb_dim);
+        assert(index->getBaseEmbData() != nullptr && index->getBaseLen() != 0 && index->getBaseEmbDim() != 0);
+        float *data_loc = nullptr;
+        unsigned loc_n{};
+        unsigned loc_dim{};
+        load_vector_data<float>(data_loc_file, data_loc, loc_n, loc_dim);
+        index->setBaseLocData(data_loc);
+        index->setBaseLocDim(loc_dim);
+        assert(index->getBaseLocData() != nullptr && loc_n == index->getBaseLen());
+        // query_emb_data
+        float *query_emb = nullptr;
+        unsigned query_num{};
+        unsigned query_emb_dim{};
+        load_data<float>(query_emb_file, query_emb, query_num, query_emb_dim);
+        index->setQueryEmbData(query_emb);
+        index->setQueryLen(query_num);
+        index->setQueryEmbDim(query_emb_dim);
+        assert(index->getQueryEmbData() != nullptr && index->getQueryLen() != 0 && index->getQueryEmbDim() != 0);
+        assert(index->getBaseEmbDim() == index->getQueryEmbDim());
+        float *query_loc = nullptr;
+        unsigned query_loc_num{};
+        unsigned query_loc_dim{};
+        load_data(query_loc_file, query_loc, query_loc_num, query_loc_dim);
+        index->setQueryLocData(query_loc);
+        index->setQueryLocDim(query_loc_dim);
+        assert(query_loc_num == index->getQueryLen() && query_loc_dim == index->getBaseLocDim());
+        float *query_alpha = nullptr;
+        unsigned query_alpha_num{};
+        unsigned query_alpha_dim{};
+        load_data(query_alpha_file, query_alpha, query_alpha_num, query_alpha_dim);
+        index->setQueryWeightData(query_alpha);
+        assert(query_loc_num == index->getQueryLen());
+        unsigned *ground_data = nullptr;
+        unsigned ground_num{};
+        unsigned ground_dim{};
+        load_data<unsigned>(ground_file, ground_data, ground_num, ground_dim);
+        index->setGroundData(ground_data);
+        index->setGroundLen(ground_num);
+        index->setGroundDim(ground_dim);
+        assert(index->getGroundData() != nullptr && index->getGroundLen() != 0 && index->getGroundDim() != 0);
+        index->setParam(parameters);
+    }
+
+    void ComponentLoad::LoadInnerBuild(char *data_emb_file, char *data_loc_file, Parameters &parameters)
+    {
+        // base_emb_data
+        float *data_emb = nullptr;
+        unsigned n{};
+        unsigned emb_dim{};
+        load_vector_data<float>(data_emb_file, data_emb, n, emb_dim);
+        index->setBaseEmbData(data_emb);
+        index->setBaseLen(n);
+        index->setBaseEmbDim(emb_dim);
+        assert(index->getBaseEmbData() != nullptr && index->getBaseLen() != 0 && index->getBaseEmbDim() != 0);
+        float *data_loc = nullptr;
+        unsigned loc_n{};
+        unsigned loc_dim{};
+        load_vector_data<float>(data_loc_file, data_loc, loc_n, loc_dim);
+        index->setBaseLocData(data_loc);
+        index->setBaseLocDim(loc_dim);
+        assert(index->getBaseLocData() != nullptr && loc_n == index->getBaseLen());
+        float *query_emb = nullptr;
+        unsigned query_num{};
+        unsigned query_emb_dim{};
+        index->setQueryEmbData(query_emb);
+        index->setQueryLen(query_num);
+        index->setQueryEmbDim(query_emb_dim);
+        float *query_loc = nullptr;
+        unsigned query_loc_num{};
+        unsigned query_loc_dim{};
+        index->setQueryLocData(query_loc);
+        index->setQueryLocDim(query_loc_dim);
+        float *query_alpha = nullptr;
+        unsigned query_alpha_num{};
+        unsigned query_alpha_dim{};
+        index->setQueryWeightData(query_alpha);
+        unsigned *ground_data = nullptr;
+        unsigned ground_num{};
+        unsigned ground_dim{};
+        index->setGroundData(ground_data);
+        index->setGroundLen(ground_num);
+        index->setGroundDim(ground_dim);
+        index->setParam(parameters);
+    }
+
+    void ComponentLoad::LoadInnerSearch(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file,
+                            Parameters &parameters)
     {
         // base_emb_data
         float *data_emb = nullptr;

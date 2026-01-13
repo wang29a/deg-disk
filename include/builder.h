@@ -42,6 +42,10 @@ namespace stkq
 
         IndexBuilder *save_graph_disk(TYPE type, char *graph_file);
 
+        IndexBuilder *save_graph_disk(TYPE type, char *meta_file, char *graph_file, char *data_file);
+
+        IndexBuilder *save_graph_disk_decouple(TYPE type, char *graph_file);
+
         IndexBuilder *load_graph(TYPE type, char *graph_file_1, char *graph_file_2);
 
         IndexBuilder *refine(TYPE type, bool debug);

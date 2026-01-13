@@ -3,6 +3,7 @@
 #include "component.h"
 #include "rtree.h"
 #include <set>
+#include <string>
 
 namespace stkq
 {
@@ -22,18 +23,29 @@ namespace stkq
         if (!dual)
         {
             auto *a = new ComponentLoad(final_index_);
-            a->LoadInner(data_emb_file, data_loc_file, query_emb_file, query_loc_file, query_alpha_file, ground_file, parameters);
-            std::cout << "base data len : " << final_index_->getBaseLen() << std::endl;
-            std::cout << "base data emb dim : " << final_index_->getBaseEmbDim() << std::endl;
-            std::cout << "base data loc dim : " << final_index_->getBaseLocDim() << std::endl;
-            std::cout << "query data len : " << final_index_->getQueryLen() << std::endl;
-            std::cout << "query data emb dim : " << final_index_->getQueryEmbDim() << std::endl;
-            std::cout << "query data loc dim : " << final_index_->getQueryLocDim() << std::endl;
-            std::cout << "ground truth data len : " << final_index_->getGroundLen() << std::endl;
-            std::cout << "ground truth data dim : " << final_index_->getGroundDim() << std::endl;
-            std::cout << "=====================" << std::endl;
-            std::cout << final_index_->getParam().toString() << std::endl;
-            std::cout << "=====================" << std::endl;
+            auto exc_type = parameters.get<std::string>("exc_type");
+            if (exc_type == "disk") {
+                a->LoadInnerBuild(data_emb_file, data_loc_file, parameters);
+                std::cout << "base data len : " << final_index_->getBaseLen() << std::endl;
+                std::cout << "base data emb dim : " << final_index_->getBaseEmbDim() << std::endl;
+                std::cout << "base data loc dim : " << final_index_->getBaseLocDim() << std::endl;
+                std::cout << "=====================" << std::endl;
+                std::cout << final_index_->getParam().toString() << std::endl;
+                std::cout << "=====================" << std::endl;
+            } else {
+                a->LoadInner(data_emb_file, data_loc_file, query_emb_file, query_loc_file, query_alpha_file, ground_file, parameters);
+                std::cout << "base data len : " << final_index_->getBaseLen() << std::endl;
+                std::cout << "base data emb dim : " << final_index_->getBaseEmbDim() << std::endl;
+                std::cout << "base data loc dim : " << final_index_->getBaseLocDim() << std::endl;
+                std::cout << "query data len : " << final_index_->getQueryLen() << std::endl;
+                std::cout << "query data emb dim : " << final_index_->getQueryEmbDim() << std::endl;
+                std::cout << "query data loc dim : " << final_index_->getQueryLocDim() << std::endl;
+                std::cout << "ground truth data len : " << final_index_->getGroundLen() << std::endl;
+                std::cout << "ground truth data dim : " << final_index_->getGroundDim() << std::endl;
+                std::cout << "=====================" << std::endl;
+                std::cout << final_index_->getParam().toString() << std::endl;
+                std::cout << "=====================" << std::endl;
+            }
             return this;
         }
         else
