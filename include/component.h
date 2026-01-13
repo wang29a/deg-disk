@@ -23,6 +23,10 @@ namespace stkq
 
         virtual void LoadInner(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file, Parameters &parameters);
 
+        virtual void LoadInnerBuild(char *data_emb_file, char *data_loc_file, Parameters &parameters);
+
+        virtual void LoadInnerSearch(char *data_emb_file, char *data_loc_file, char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file, Parameters &parameters);
+
         // virtual void load_partition(char *partition_file);
     };
 
@@ -700,12 +704,12 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
         }
 
         void PruneInner(std::vector<Index::DEGNNDescentNeighbor> &pool, unsigned range,
-                        // std::vector<Index::DEGNeighbor> &picked);
-                        std::vector<Index::DEGNeighbor> &cut_graph_);
+                // std::vector<Index::DEGNeighbor> &picked);
+                std::vector<Index::DEGNeighbor> &cut_graph_, bool is_change = true);
 
-        void DEG2Neighbor(unsigned qnode, unsigned range, std::vector<Index::DEGNNDescentNeighbor> &pool, std::vector<Index::DEGNeighbor> &result)
+        void DEG2Neighbor(unsigned qnode, unsigned range, std::vector<Index::DEGNNDescentNeighbor> &pool, std::vector<Index::DEGNeighbor> &result, bool is_change = false)
         {
-            PruneInner(pool, range, result);
+            PruneInner(pool, range, result, is_change);
         };
     };
 

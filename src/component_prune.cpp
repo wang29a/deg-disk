@@ -3,6 +3,7 @@
 //
 
 #include "component.h"
+#include <functional>
 
 namespace stkq
 {
@@ -87,172 +88,1017 @@ namespace stkq
     }
 
     void ComponentDEGPruneHeuristic::PruneInner(std::vector<Index::DEGNNDescentNeighbor> &pool, unsigned int range,
-                                                     std::vector<Index::DEGNeighbor> &cut_graph_)
+                                                std::vector<Index::DEGNeighbor> &cut_graph_, bool is_change)
     {
-        std::vector<Index::DEGNeighbor> picked;
-        // pool 按照layer排序 在同层内按照geo_distance排序
-        Index::skyline_queue queue;
-        sort(pool.begin(), pool.end());
-        queue.init_queue(pool);
-        pool.swap(queue.pool);
-        int iter = 0;
-        int visited_layer = 0;
-        while (picked.size() < range && iter < pool.size())
+        if (!is_change)
         {
-            std::vector<Index::DEGNNDescentNeighbor> candidate;
-            while (iter < pool.size())
+            std::vector<Index::DEGNeighbor> picked;
+            // pool 按照layer排序 在同层内按照geo_distance排序
+            Index::skyline_queue queue;
+            sort(pool.begin(), pool.end());
+            queue.init_queue(pool);
+            pool.swap(queue.pool);
+            int iter = 0;
+            int visited_layer = 0;
+            while (picked.size() < range && iter < pool.size())
             {
-                if (pool[iter].layer_ == visited_layer)
+                std::vector<Index::DEGNNDescentNeighbor> candidate;
+                while (iter < pool.size())
                 {
-                    candidate.emplace_back(pool[iter]);
-                }
-                else
-                {
-                    break;
-                }
-                iter++;
-            }
-            std::vector<Index::DEGNeighbor> tempres_picked;
-            for (int i = 0; i < candidate.size(); i++)
-            {
-                // 这里先初始化useful range 根据斜率算出来
-                std::vector<std::pair<float, float>> prune_range;
-                float cur_geo_dist = candidate[i].geo_distance_; // s_pq
-                float cur_emb_dist = candidate[i].emb_distance_; // e_pq
-                for (size_t j = 0; j < picked.size(); j++)
-                {
-                    const std::vector<std::pair<float, float>> &picked_use_range = picked[j].available_range;
-                    // we want to find out if this edge can prune the candidate within its picked_avaiable_range
-                    float xq_e_dist = index->get_E_Dist()->compare(
-                        index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
-                        index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
-                        index->getBaseEmbDim());
-                    // E(x,q)
-
-                    float xq_s_dist = index->get_S_Dist()->compare(
-                        index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
-                        index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
-                        index->getBaseLocDim());
-                    // S(x,q)
-
-                    float exist_e_dist = picked[j].emb_distance_; // e_xp
-
-                    float exist_s_dist = picked[j].geo_distance_; // s_xp
-
-                    // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
-                    // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
-                    // if alpha holds on for the two equation at the same time, the edge will be pruned
-                    // now for equation 1
-                    float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
-                    float diff2 = cur_geo_dist - exist_s_dist;
-                    /*
-                    diff1 > 0 && diff2 > 0
-                    equation 1 holds on when alpha < = diff2 / diff1
-                    diff1 < 0 && diff2 < 0
-                    equation 1 holds on when alpha > = diff2 / diff1
-                    diff1 < 0 && diff2 > 0
-                    the equation hold forever
-                    diff1 > 0 && diff2 < 0
-                    equation never hold which means this edge will not be pruned by this strategy
-                    */
-                    // float eq1_prune_upper_alpha = 1;
-                    // float eq1_prune_lower_alpha = 0;
-                    std::pair<float, float> tmp_prune_range_1;
-                    if (diff1 > 0 && diff2 > 0)
+                    if (pool[iter].layer_ == visited_layer)
                     {
-                        // equation 1 holds on when alpha < = diff2 / diff1
-                        tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
-                        // eq1_prune_lower_alpha = diff2 / diff1 ;
-                    }
-                    else if (diff1 < 0 && diff2 < 0)
-                    {
-                        // equation 1 holds on when alpha > = diff2 / diff1
-                        // eq1_prune_upper_alpha = diff2 / diff1 ;
-                        tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
-                    }
-                    else if (diff1 < 0 && diff2 > 0)
-                    {
-                        tmp_prune_range_1 = {0.0f, 1.0f};
-                        // the equation hold forever
-                    }
-                    else if (diff1 > 0 && diff2 < 0)
-                    {
-                        // equation never hold
-                        // break;
-                        tmp_prune_range_1 = {0.0f, 0.0f};
-                    }
-                    // now for equation 2
-                    float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
-                    float diff4 = cur_geo_dist - xq_s_dist;
-                    /*
-                    similar to previous
-                    */
-                    // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
-                    // float eq2_prune_upper_alpha = 1;
-                    // float eq2_prune_lower_alpha = 0;
-                    std::pair<float, float> tmp_prune_range_2;
-                    if (diff3 > 0 && diff4 > 0)
-                    {
-                        // equation 2 holds on when alpha < = diff4 / diff3
-                        // eq2_prune_upper_alpha = diff4 / diff3;
-                        // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
-                        tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
-                    }
-                    else if (diff3 < 0 && diff4 < 0)
-                    {
-                        // equation 2 holds on when alpha > = diff4 / diff3
-                        // eq2_prune_lower_alpha = diff4 / diff3;
-                        // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
-                        tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
-                    }
-                    else if (diff3 < 0 && diff4 > 0)
-                    {
-                        // the equation hold forever
-                        // then we do not change the previous range
-                        tmp_prune_range_2 = {0.0f, 1.0f};
-                    }
-                    else if (diff3 > 0 && diff4 < 0)
-                    {
-                        // equation never hold
-                        // break;
-                        tmp_prune_range_2 = {0.0f, 0.0f};
-                    }
-
-                    std::pair<float, float> tmp_prune_range;
-                    tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
-                    tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
-
-                    if (tmp_prune_range.second > tmp_prune_range.first)
-                    {
-                        // now we consider whether this range is useful range, that is (second > first)
-                        // now we check its intersection range with shared_use_range
-                        intersection(picked_use_range, tmp_prune_range, prune_range);
+                        candidate.emplace_back(pool[iter]);
                     }
                     else
                     {
-                        continue;
-                        // this range is not useful, so this edge will not be pruned by this selected edge
+                        break;
+                    }
+                    iter++;
+                }
+                std::vector<Index::DEGNeighbor> tempres_picked;
+                for (int i = 0; i < candidate.size(); i++)
+                {
+                    // 这里先初始化useful range 根据斜率算出来
+                    std::vector<std::pair<float, float>> prune_range;
+                    float cur_geo_dist = candidate[i].geo_distance_; // s_pq
+                    float cur_emb_dist = candidate[i].emb_distance_; // e_pq
+                    for (size_t j = 0; j < picked.size(); j++)
+                    {
+                        const std::vector<std::pair<float, float>> &picked_use_range = picked[j].available_range;
+                        // we want to find out if this edge can prune the candidate within its picked_avaiable_range
+                        float xq_e_dist = index->get_E_Dist()->compare(
+                            index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
+                            index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                            index->getBaseEmbDim());
+                        // E(x,q)
+
+                        float xq_s_dist = index->get_S_Dist()->compare(
+                            index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
+                            index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                            index->getBaseLocDim());
+                        // S(x,q)
+
+                        float exist_e_dist = picked[j].emb_distance_; // e_xp
+
+                        float exist_s_dist = picked[j].geo_distance_; // s_xp
+
+                        // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
+                        // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
+                        // if alpha holds on for the two equation at the same time, the edge will be pruned
+                        // now for equation 1
+                        float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
+                        float diff2 = cur_geo_dist - exist_s_dist;
+                        /*
+                        diff1 > 0 && diff2 > 0
+                        equation 1 holds on when alpha < = diff2 / diff1
+                        diff1 < 0 && diff2 < 0
+                        equation 1 holds on when alpha > = diff2 / diff1
+                        diff1 < 0 && diff2 > 0
+                        the equation hold forever
+                        diff1 > 0 && diff2 < 0
+                        equation never hold which means this edge will not be pruned by this strategy
+                        */
+                        // float eq1_prune_upper_alpha = 1;
+                        // float eq1_prune_lower_alpha = 0;
+                        std::pair<float, float> tmp_prune_range_1;
+                        if (diff1 > 0 && diff2 > 0)
+                        {
+                            // equation 1 holds on when alpha < = diff2 / diff1
+                            tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
+                            // eq1_prune_lower_alpha = diff2 / diff1 ;
+                        }
+                        else if (diff1 < 0 && diff2 < 0)
+                        {
+                            // equation 1 holds on when alpha > = diff2 / diff1
+                            // eq1_prune_upper_alpha = diff2 / diff1 ;
+                            tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
+                        }
+                        else if (diff1 < 0 && diff2 > 0)
+                        {
+                            tmp_prune_range_1 = {0.0f, 1.0f};
+                            // the equation hold forever
+                        }
+                        else if (diff1 > 0 && diff2 < 0)
+                        {
+                            // equation never hold
+                            // break;
+                            tmp_prune_range_1 = {0.0f, 0.0f};
+                        }
+                        // now for equation 2
+                        float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
+                        float diff4 = cur_geo_dist - xq_s_dist;
+                        /*
+                        similar to previous
+                        */
+                        // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
+                        // float eq2_prune_upper_alpha = 1;
+                        // float eq2_prune_lower_alpha = 0;
+                        std::pair<float, float> tmp_prune_range_2;
+                        if (diff3 > 0 && diff4 > 0)
+                        {
+                            // equation 2 holds on when alpha < = diff4 / diff3
+                            // eq2_prune_upper_alpha = diff4 / diff3;
+                            // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
+                            tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
+                        }
+                        else if (diff3 < 0 && diff4 < 0)
+                        {
+                            // equation 2 holds on when alpha > = diff4 / diff3
+                            // eq2_prune_lower_alpha = diff4 / diff3;
+                            // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
+                            tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
+                        }
+                        else if (diff3 < 0 && diff4 > 0)
+                        {
+                            // the equation hold forever
+                            // then we do not change the previous range
+                            tmp_prune_range_2 = {0.0f, 1.0f};
+                        }
+                        else if (diff3 > 0 && diff4 < 0)
+                        {
+                            // equation never hold
+                            // break;
+                            tmp_prune_range_2 = {0.0f, 0.0f};
+                        }
+
+                        std::pair<float, float> tmp_prune_range;
+                        tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
+                        tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
+
+                        if (tmp_prune_range.second > tmp_prune_range.first)
+                        {
+                            // now we consider whether this range is useful range, that is (second > first)
+                            // now we check its intersection range with shared_use_range
+                            intersection(picked_use_range, tmp_prune_range, prune_range);
+                        }
+                        else
+                        {
+                            continue;
+                            // this range is not useful, so this edge will not be pruned by this selected edge
+                        }
+                    }
+                    prune_range = mergeIntervals(prune_range);
+                    std::vector<std::pair<float, float>> after_pruned_use_range;
+                    get_use_range(prune_range, after_pruned_use_range);
+                    float threshold = 0.1;
+                    float use_size = 0;
+                    for (int j = 0; j < after_pruned_use_range.size(); j++)
+                    {
+                        use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
+                    }
+                    if (use_size >= threshold)
+                    {
+                        picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
+                                                            candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
                     }
                 }
-                prune_range = mergeIntervals(prune_range);
-                std::vector<std::pair<float, float>> after_pruned_use_range;
-                get_use_range(prune_range, after_pruned_use_range);
-                float threshold = 0.1;
-                float use_size = 0;
-                for (int j = 0; j < after_pruned_use_range.size(); j++)
-                {
-                    use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
-                }
-                if (use_size >= threshold)
-                {
-                    picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
-                                                             candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
-                }
+                visited_layer++;
+                if (picked.size() >= range)
+                    break;
             }
-            visited_layer++;
-            if (picked.size() >= range)
-                break;
+            cut_graph_.swap(picked);
         }
-        cut_graph_.swap(picked);
+        else
+        {
+            if (1)
+            {
+                // change_prune
+
+                auto judge_dominate = [](const std::pair<float, float> &a,
+                                         const std::pair<float, float> &b)
+                {
+                    float de_a = a.first;
+                    float ds_a = a.second;
+                    float de_b = b.first;
+                    float ds_b = b.second;
+
+                    // 条件1：a 在两个维度都不劣于 b
+                    bool not_worse = (de_a <= de_b) && (ds_a <= ds_b);
+
+                    // 条件2：a 至少在一个维度严格更优
+                    bool strictly_better = (de_a < de_b) || (ds_a < ds_b);
+
+                    return not_worse && strictly_better;
+                };
+                std::vector<Index::DEGNeighbor> picked;
+                // pool 按照layer排序 在同层内按照geo_distance排序
+                Index::skyline_queue queue;
+                sort(pool.begin(), pool.end());
+                queue.init_queue(pool);
+                pool.swap(queue.pool);
+                int iter = 0;
+                int visited_layer = 0;
+                while (picked.size() < range && iter < pool.size())
+                {
+                    std::vector<Index::DEGNNDescentNeighbor> candidate;
+                    while (iter < pool.size())
+                    {
+                        if (pool[iter].layer_ == visited_layer)
+                        {
+                            candidate.emplace_back(pool[iter]);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                        iter++;
+                    }
+                    std::vector<Index::DEGNeighbor> tempres_picked;
+
+                    if (visited_layer == 0)
+                    {
+                        // candidate = spread_from_center(candidate);
+                        for (int i = 0; i < candidate.size(); i++)
+                        {
+                            // 这里先初始化useful range 根据斜率算出来
+                            std::vector<std::pair<float, float>> prune_range;
+                            float cur_geo_dist = candidate[i].geo_distance_; // s_pq
+                            float cur_emb_dist = candidate[i].emb_distance_; // e_pq
+                            for (size_t j = 0; j < tempres_picked.size(); j++)
+                            {
+                                const std::vector<std::pair<float, float>> &picked_use_range = tempres_picked[j].available_range;
+                                // we want to find out if this edge can prune the candidate within its picked_avaiable_range
+                                float xq_e_dist = index->get_E_Dist()->compare(
+                                    index->getBaseEmbData() + (size_t)tempres_picked[j].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbDim());
+                                // E(x,q)
+
+                                float xq_s_dist = index->get_S_Dist()->compare(
+                                    index->getBaseLocData() + (size_t)tempres_picked[j].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocDim());
+                                // S(x,q)
+
+                                float exist_e_dist = tempres_picked[j].emb_distance_; // e_xp
+
+                                float exist_s_dist = tempres_picked[j].geo_distance_; // s_xp
+
+                                // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
+                                // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
+                                // if alpha holds on for the two equation at the same time, the edge will be pruned
+                                // now for equation 1
+                                float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
+                                float diff2 = cur_geo_dist - exist_s_dist;
+                                /*
+                                diff1 > 0 && diff2 > 0
+                                equation 1 holds on when alpha < = diff2 / diff1
+                                diff1 < 0 && diff2 < 0
+                                equation 1 holds on when alpha > = diff2 / diff1
+                                diff1 < 0 && diff2 > 0
+                                the equation hold forever
+                                diff1 > 0 && diff2 < 0
+                                equation never hold which means this edge will not be pruned by this strategy
+                                */
+                                // float eq1_prune_upper_alpha = 1;
+                                // float eq1_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_1;
+                                if (diff1 > 0 && diff2 > 0)
+                                {
+                                    // equation 1 holds on when alpha < = diff2 / diff1
+                                    tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
+                                    // eq1_prune_lower_alpha = diff2 / diff1 ;
+                                }
+                                else if (diff1 < 0 && diff2 < 0)
+                                {
+                                    // equation 1 holds on when alpha > = diff2 / diff1
+                                    // eq1_prune_upper_alpha = diff2 / diff1 ;
+                                    tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
+                                }
+                                else if (diff1 < 0 && diff2 > 0)
+                                {
+                                    tmp_prune_range_1 = {0.0f, 1.0f};
+                                    // the equation hold forever
+                                }
+                                else if (diff1 > 0 && diff2 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_1 = {0.0f, 0.0f};
+                                }
+                                // now for equation 2
+                                float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
+                                float diff4 = cur_geo_dist - xq_s_dist;
+                                /*
+                                similar to previous
+                                */
+                                // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
+                                // float eq2_prune_upper_alpha = 1;
+                                // float eq2_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_2;
+                                if (diff3 > 0 && diff4 > 0)
+                                {
+                                    // equation 2 holds on when alpha < = diff4 / diff3
+                                    // eq2_prune_upper_alpha = diff4 / diff3;
+                                    // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
+                                }
+                                else if (diff3 < 0 && diff4 < 0)
+                                {
+                                    // equation 2 holds on when alpha > = diff4 / diff3
+                                    // eq2_prune_lower_alpha = diff4 / diff3;
+                                    // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
+                                }
+                                else if (diff3 < 0 && diff4 > 0)
+                                {
+                                    // the equation hold forever
+                                    // then we do not change the previous range
+                                    tmp_prune_range_2 = {0.0f, 1.0f};
+                                }
+                                else if (diff3 > 0 && diff4 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_2 = {0.0f, 0.0f};
+                                }
+
+                                std::pair<float, float> tmp_prune_range;
+                                tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
+                                tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
+
+                                if (tmp_prune_range.second > tmp_prune_range.first)
+                                {
+                                    // now we consider whether this range is useful range, that is (second > first)
+                                    // now we check its intersection range with shared_use_range
+                                    intersection(picked_use_range, tmp_prune_range, prune_range);
+                                }
+                                else
+                                {
+                                    continue;
+                                    // this range is not useful, so this edge will not be pruned by this selected edge
+                                }
+                            }
+                            prune_range = mergeIntervals(prune_range);
+                            std::vector<std::pair<float, float>> after_pruned_use_range;
+                            get_use_range(prune_range, after_pruned_use_range);
+                            float threshold = 0.1;
+                            float use_size = 0;
+                            for (int j = 0; j < after_pruned_use_range.size(); j++)
+                            {
+                                use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
+                            }
+                            if (use_size >= threshold)
+                            {
+                                tempres_picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
+                                                                            candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
+                            }
+                        }
+                        Index::DEGNeighbor lastnode = tempres_picked[tempres_picked.size() - 1];
+                        tempres_picked.clear();
+                        tempres_picked.push_back(lastnode);
+                        int last_i = 0;
+                        for (int i = candidate.size() - 1; i >= 0; i--)
+                        {
+                            if (lastnode.id_ == candidate[i].id_)
+                            {
+                                last_i = i;
+                                break;
+                            }
+                        }
+                        for (int i = last_i - 1; i >= 0; i--)
+                        {
+                            // 这里先初始化useful range 根据斜率算出来
+                            std::vector<std::pair<float, float>> prune_range;
+                            float cur_geo_dist = candidate[i].geo_distance_; // s_pq
+                            float cur_emb_dist = candidate[i].emb_distance_; // e_pq
+                            for (size_t j = 0; j < tempres_picked.size(); j++)
+                            {
+                                const std::vector<std::pair<float, float>> &picked_use_range = tempres_picked[j].available_range;
+                                // we want to find out if this edge can prune the candidate within its picked_avaiable_range
+                                float xq_e_dist = index->get_E_Dist()->compare(
+                                    index->getBaseEmbData() + (size_t)tempres_picked[j].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbDim());
+                                // E(x,q)
+
+                                float xq_s_dist = index->get_S_Dist()->compare(
+                                    index->getBaseLocData() + (size_t)tempres_picked[j].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocDim());
+                                // S(x,q)
+
+                                float exist_e_dist = tempres_picked[j].emb_distance_; // e_xp
+
+                                float exist_s_dist = tempres_picked[j].geo_distance_; // s_xp
+
+                                // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
+                                // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
+                                // if alpha holds on for the two equation at the same time, the edge will be pruned
+                                // now for equation 1
+                                float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
+                                float diff2 = cur_geo_dist - exist_s_dist;
+                                /*
+                                diff1 > 0 && diff2 > 0
+                                equation 1 holds on when alpha < = diff2 / diff1
+                                diff1 < 0 && diff2 < 0
+                                equation 1 holds on when alpha > = diff2 / diff1
+                                diff1 < 0 && diff2 > 0
+                                the equation hold forever
+                                diff1 > 0 && diff2 < 0
+                                equation never hold which means this edge will not be pruned by this strategy
+                                */
+                                // float eq1_prune_upper_alpha = 1;
+                                // float eq1_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_1;
+                                if (diff1 > 0 && diff2 > 0)
+                                {
+                                    // equation 1 holds on when alpha < = diff2 / diff1
+                                    tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
+                                    // eq1_prune_lower_alpha = diff2 / diff1 ;
+                                }
+                                else if (diff1 < 0 && diff2 < 0)
+                                {
+                                    // equation 1 holds on when alpha > = diff2 / diff1
+                                    // eq1_prune_upper_alpha = diff2 / diff1 ;
+                                    tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
+                                }
+                                else if (diff1 < 0 && diff2 > 0)
+                                {
+                                    tmp_prune_range_1 = {0.0f, 1.0f};
+                                    // the equation hold forever
+                                }
+                                else if (diff1 > 0 && diff2 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_1 = {0.0f, 0.0f};
+                                }
+                                // now for equation 2
+                                float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
+                                float diff4 = cur_geo_dist - xq_s_dist;
+                                /*
+                                similar to previous
+                                */
+                                // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
+                                // float eq2_prune_upper_alpha = 1;
+                                // float eq2_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_2;
+                                if (diff3 > 0 && diff4 > 0)
+                                {
+                                    // equation 2 holds on when alpha < = diff4 / diff3
+                                    // eq2_prune_upper_alpha = diff4 / diff3;
+                                    // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
+                                }
+                                else if (diff3 < 0 && diff4 < 0)
+                                {
+                                    // equation 2 holds on when alpha > = diff4 / diff3
+                                    // eq2_prune_lower_alpha = diff4 / diff3;
+                                    // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
+                                }
+                                else if (diff3 < 0 && diff4 > 0)
+                                {
+                                    // the equation hold forever
+                                    // then we do not change the previous range
+                                    tmp_prune_range_2 = {0.0f, 1.0f};
+                                }
+                                else if (diff3 > 0 && diff4 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_2 = {0.0f, 0.0f};
+                                }
+
+                                std::pair<float, float> tmp_prune_range;
+                                tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
+                                tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
+
+                                if (tmp_prune_range.second > tmp_prune_range.first)
+                                {
+                                    // now we consider whether this range is useful range, that is (second > first)
+                                    // now we check its intersection range with shared_use_range
+                                    intersection(picked_use_range, tmp_prune_range, prune_range);
+                                }
+                                else
+                                {
+                                    continue;
+                                    // this range is not useful, so this edge will not be pruned by this selected edge
+                                }
+                            }
+                            prune_range = mergeIntervals(prune_range);
+                            std::vector<std::pair<float, float>> after_pruned_use_range;
+                            get_use_range(prune_range, after_pruned_use_range);
+                            float threshold = 0.1;
+                            float use_size = 0;
+                            for (int j = 0; j < after_pruned_use_range.size(); j++)
+                            {
+                                use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
+                            }
+                            if (use_size >= threshold)
+                            {
+                                tempres_picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
+                                                                            candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
+                            }
+                        }
+                        picked.insert(picked.end(), tempres_picked.begin(), tempres_picked.end());
+                    }
+                    else
+                    {
+                        for (int i = 0; i < candidate.size(); i++)
+                        {
+                            // 这里先初始化useful range 根据斜率算出来
+                            std::vector<std::pair<float, float>> prune_range;
+                            float cur_geo_dist = candidate[i].geo_distance_; // s_pq
+                            float cur_emb_dist = candidate[i].emb_distance_; // e_pq
+
+                            for (size_t j = 0; j < picked.size(); j++)
+                            {
+                                float exist_e_dist = picked[j].emb_distance_; // e_xp
+
+                                float exist_s_dist = picked[j].geo_distance_; // s_xp
+                                if (!judge_dominate(std::make_pair(exist_s_dist, exist_e_dist), std::make_pair(cur_geo_dist, cur_emb_dist)))
+                                {
+                                    continue;
+                                }
+                                const std::vector<std::pair<float, float>> &picked_use_range = picked[j].available_range;
+                                // we want to find out if this edge can prune the candidate within its picked_avaiable_range
+                                float xq_e_dist = index->get_E_Dist()->compare(
+                                    index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbDim());
+                                // E(x,q)
+
+                                float xq_s_dist = index->get_S_Dist()->compare(
+                                    index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocDim());
+                                // S(x,q)
+
+                                // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
+                                // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
+                                // if alpha holds on for the two equation at the same time, the edge will be pruned
+                                // now for equation 1
+                                float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
+                                float diff2 = cur_geo_dist - exist_s_dist;
+                                /*
+                                diff1 > 0 && diff2 > 0
+                                equation 1 holds on when alpha < = diff2 / diff1
+                                diff1 < 0 && diff2 < 0
+                                equation 1 holds on when alpha > = diff2 / diff1
+                                diff1 < 0 && diff2 > 0
+                                the equation hold forever
+                                diff1 > 0 && diff2 < 0
+                                equation never hold which means this edge will not be pruned by this strategy
+                                */
+                                // float eq1_prune_upper_alpha = 1;
+                                // float eq1_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_1;
+                                if (diff1 > 0 && diff2 > 0)
+                                {
+                                    // equation 1 holds on when alpha < = diff2 / diff1
+                                    tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
+                                    // eq1_prune_lower_alpha = diff2 / diff1 ;
+                                }
+                                else if (diff1 < 0 && diff2 < 0)
+                                {
+                                    // equation 1 holds on when alpha > = diff2 / diff1
+                                    // eq1_prune_upper_alpha = diff2 / diff1 ;
+                                    tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
+                                }
+                                else if (diff1 < 0 && diff2 > 0)
+                                {
+                                    tmp_prune_range_1 = {0.0f, 1.0f};
+                                    // the equation hold forever
+                                }
+                                else if (diff1 > 0 && diff2 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_1 = {0.0f, 0.0f};
+                                }
+                                // now for equation 2
+                                float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
+                                float diff4 = cur_geo_dist - xq_s_dist;
+                                /*
+                                similar to previous
+                                */
+                                // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
+                                // float eq2_prune_upper_alpha = 1;
+                                // float eq2_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_2;
+                                if (diff3 > 0 && diff4 > 0)
+                                {
+                                    // equation 2 holds on when alpha < = diff4 / diff3
+                                    // eq2_prune_upper_alpha = diff4 / diff3;
+                                    // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
+                                }
+                                else if (diff3 < 0 && diff4 < 0)
+                                {
+                                    // equation 2 holds on when alpha > = diff4 / diff3
+                                    // eq2_prune_lower_alpha = diff4 / diff3;
+                                    // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
+                                }
+                                else if (diff3 < 0 && diff4 > 0)
+                                {
+                                    // the equation hold forever
+                                    // then we do not change the previous range
+                                    tmp_prune_range_2 = {0.0f, 1.0f};
+                                }
+                                else if (diff3 > 0 && diff4 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_2 = {0.0f, 0.0f};
+                                }
+
+                                std::pair<float, float> tmp_prune_range;
+                                tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
+                                tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
+
+                                if (tmp_prune_range.second > tmp_prune_range.first)
+                                {
+                                    // now we consider whether this range is useful range, that is (second > first)
+                                    // now we check its intersection range with shared_use_range
+                                    intersection(picked_use_range, tmp_prune_range, prune_range);
+                                }
+                                else
+                                {
+                                    continue;
+                                    // this range is not useful, so this edge will not be pruned by this selected edge
+                                }
+                            }
+
+                            prune_range = mergeIntervals(prune_range);
+                            std::vector<std::pair<float, float>> after_pruned_use_range;
+                            get_use_range(prune_range, after_pruned_use_range);
+                            float threshold = 0.1;
+                            float use_size = 0;
+                            for (int j = 0; j < after_pruned_use_range.size(); j++)
+                            {
+                                use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
+                            }
+                            if (use_size >= threshold)
+                            {
+                                picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
+                                                                    candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
+                            }
+                        }
+                    }
+                    visited_layer++;
+                    if (picked.size() >= range)
+                        break;
+                }
+                if (picked.size() > range)
+                    picked.resize(range);
+                cut_graph_.swap(picked);
+            }
+            else
+            {
+                // change_prune
+
+                auto judge_dominate = [](const std::pair<float, float> &a,
+                                         const std::pair<float, float> &b)
+                {
+                    float de_a = a.first;
+                    float ds_a = a.second;
+                    float de_b = b.first;
+                    float ds_b = b.second;
+
+                    // 条件1：a 在两个维度都不劣于 b
+                    bool not_worse = (de_a <= de_b) && (ds_a <= ds_b);
+
+                    // 条件2：a 至少在一个维度严格更优
+                    bool strictly_better = (de_a < de_b) || (ds_a < ds_b);
+
+                    return not_worse && strictly_better;
+                };
+                auto spread_from_center = [](const std::vector<Index::DEGNNDescentNeighbor> &arr)
+                {
+                    std::vector<Index::DEGNNDescentNeighbor> result;
+                    result.reserve(arr.size());
+                    int n = static_cast<int>(arr.size());
+                    int mid = n / 2;
+
+                    result.push_back(arr[mid]);
+                    for (int offset = 1; offset <= mid; ++offset)
+                    {
+                        if (mid - offset >= 0)
+                            result.push_back(arr[mid - offset]);
+                        if (mid + offset < n)
+                            result.push_back(arr[mid + offset]);
+                    }
+                    return result;
+                };
+                std::vector<Index::DEGNeighbor> picked;
+                // pool 按照layer排序 在同层内按照geo_distance排序
+                Index::skyline_queue queue;
+                sort(pool.begin(), pool.end());
+                queue.init_queue(pool);
+                pool.swap(queue.pool);
+                int iter = 0;
+                int visited_layer = 0;
+                while (picked.size() < range && iter < pool.size())
+                {
+                    std::vector<Index::DEGNNDescentNeighbor> candidate;
+                    while (iter < pool.size())
+                    {
+                        if (pool[iter].layer_ == visited_layer)
+                        {
+                            candidate.emplace_back(pool[iter]);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                        iter++;
+                    }
+                    std::vector<Index::DEGNeighbor> tempres_picked;
+
+                    if (visited_layer == 0)
+                    {
+                        candidate = spread_from_center(candidate);
+                        for (int i = 0; i < candidate.size(); i++)
+                        {
+                            // 这里先初始化useful range 根据斜率算出来
+                            std::vector<std::pair<float, float>> prune_range;
+                            float cur_geo_dist = candidate[i].geo_distance_; // s_pq
+                            float cur_emb_dist = candidate[i].emb_distance_; // e_pq
+                            for (size_t j = 0; j < picked.size(); j++)
+                            {
+                                const std::vector<std::pair<float, float>> &picked_use_range = picked[j].available_range;
+                                // we want to find out if this edge can prune the candidate within its picked_avaiable_range
+                                float xq_e_dist = index->get_E_Dist()->compare(
+                                    index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbDim());
+                                // E(x,q)
+
+                                float xq_s_dist = index->get_S_Dist()->compare(
+                                    index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocDim());
+                                // S(x,q)
+
+                                float exist_e_dist = picked[j].emb_distance_; // e_xp
+
+                                float exist_s_dist = picked[j].geo_distance_; // s_xp
+
+                                // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
+                                // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
+                                // if alpha holds on for the two equation at the same time, the edge will be pruned
+                                // now for equation 1
+                                float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
+                                float diff2 = cur_geo_dist - exist_s_dist;
+                                /*
+                                diff1 > 0 && diff2 > 0
+                                equation 1 holds on when alpha < = diff2 / diff1
+                                diff1 < 0 && diff2 < 0
+                                equation 1 holds on when alpha > = diff2 / diff1
+                                diff1 < 0 && diff2 > 0
+                                the equation hold forever
+                                diff1 > 0 && diff2 < 0
+                                equation never hold which means this edge will not be pruned by this strategy
+                                */
+                                // float eq1_prune_upper_alpha = 1;
+                                // float eq1_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_1;
+                                if (diff1 > 0 && diff2 > 0)
+                                {
+                                    // equation 1 holds on when alpha < = diff2 / diff1
+                                    tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
+                                    // eq1_prune_lower_alpha = diff2 / diff1 ;
+                                }
+                                else if (diff1 < 0 && diff2 < 0)
+                                {
+                                    // equation 1 holds on when alpha > = diff2 / diff1
+                                    // eq1_prune_upper_alpha = diff2 / diff1 ;
+                                    tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
+                                }
+                                else if (diff1 < 0 && diff2 > 0)
+                                {
+                                    tmp_prune_range_1 = {0.0f, 1.0f};
+                                    // the equation hold forever
+                                }
+                                else if (diff1 > 0 && diff2 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_1 = {0.0f, 0.0f};
+                                }
+                                // now for equation 2
+                                float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
+                                float diff4 = cur_geo_dist - xq_s_dist;
+                                /*
+                                similar to previous
+                                */
+                                // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
+                                // float eq2_prune_upper_alpha = 1;
+                                // float eq2_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_2;
+                                if (diff3 > 0 && diff4 > 0)
+                                {
+                                    // equation 2 holds on when alpha < = diff4 / diff3
+                                    // eq2_prune_upper_alpha = diff4 / diff3;
+                                    // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
+                                }
+                                else if (diff3 < 0 && diff4 < 0)
+                                {
+                                    // equation 2 holds on when alpha > = diff4 / diff3
+                                    // eq2_prune_lower_alpha = diff4 / diff3;
+                                    // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
+                                }
+                                else if (diff3 < 0 && diff4 > 0)
+                                {
+                                    // the equation hold forever
+                                    // then we do not change the previous range
+                                    tmp_prune_range_2 = {0.0f, 1.0f};
+                                }
+                                else if (diff3 > 0 && diff4 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_2 = {0.0f, 0.0f};
+                                }
+
+                                std::pair<float, float> tmp_prune_range;
+                                tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
+                                tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
+
+                                if (tmp_prune_range.second > tmp_prune_range.first)
+                                {
+                                    // now we consider whether this range is useful range, that is (second > first)
+                                    // now we check its intersection range with shared_use_range
+                                    intersection(picked_use_range, tmp_prune_range, prune_range);
+                                }
+                                else
+                                {
+                                    continue;
+                                    // this range is not useful, so this edge will not be pruned by this selected edge
+                                }
+                            }
+                            prune_range = mergeIntervals(prune_range);
+                            std::vector<std::pair<float, float>> after_pruned_use_range;
+                            get_use_range(prune_range, after_pruned_use_range);
+                            float threshold = 0.1;
+                            float use_size = 0;
+                            for (int j = 0; j < after_pruned_use_range.size(); j++)
+                            {
+                                use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
+                            }
+                            if (use_size >= threshold)
+                            {
+                                picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
+                                                                    candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
+                            }
+                        }
+                    }
+                    else
+                        for (int i = 0; i < candidate.size(); i++)
+                        {
+                            // 这里先初始化useful range 根据斜率算出来
+                            std::vector<std::pair<float, float>> prune_range;
+                            float cur_geo_dist = candidate[i].geo_distance_; // s_pq
+                            float cur_emb_dist = candidate[i].emb_distance_; // e_pq
+
+                            for (size_t j = 0; j < picked.size(); j++)
+                            {
+                                float exist_e_dist = picked[j].emb_distance_; // e_xp
+
+                                float exist_s_dist = picked[j].geo_distance_; // s_xp
+                                if (!judge_dominate(std::make_pair(exist_s_dist, exist_e_dist), std::make_pair(cur_geo_dist, cur_emb_dist)))
+                                {
+                                    continue;
+                                }
+                                const std::vector<std::pair<float, float>> &picked_use_range = picked[j].available_range;
+                                // we want to find out if this edge can prune the candidate within its picked_avaiable_range
+                                float xq_e_dist = index->get_E_Dist()->compare(
+                                    index->getBaseEmbData() + (size_t)picked[j].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbData() + (size_t)candidate[i].id_ * index->getBaseEmbDim(),
+                                    index->getBaseEmbDim());
+                                // E(x,q)
+
+                                float xq_s_dist = index->get_S_Dist()->compare(
+                                    index->getBaseLocData() + (size_t)picked[j].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocData() + (size_t)candidate[i].id_ * index->getBaseLocDim(),
+                                    index->getBaseLocDim());
+                                // S(x,q)
+
+                                // alpha * (E(p,x) - S(p,x) - E(p,q) + S(p,q)) <= S(p,q) - S(p,x)
+                                // alpha * (E(q,x) - S(q,x) - E(p,q) + S(p,q)) <= S(p,q) - S(q,x)
+                                // if alpha holds on for the two equation at the same time, the edge will be pruned
+                                // now for equation 1
+                                float diff1 = exist_e_dist - cur_emb_dist + cur_geo_dist - exist_s_dist;
+                                float diff2 = cur_geo_dist - exist_s_dist;
+                                /*
+                                diff1 > 0 && diff2 > 0
+                                equation 1 holds on when alpha < = diff2 / diff1
+                                diff1 < 0 && diff2 < 0
+                                equation 1 holds on when alpha > = diff2 / diff1
+                                diff1 < 0 && diff2 > 0
+                                the equation hold forever
+                                diff1 > 0 && diff2 < 0
+                                equation never hold which means this edge will not be pruned by this strategy
+                                */
+                                // float eq1_prune_upper_alpha = 1;
+                                // float eq1_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_1;
+                                if (diff1 > 0 && diff2 > 0)
+                                {
+                                    // equation 1 holds on when alpha < = diff2 / diff1
+                                    tmp_prune_range_1 = std::make_pair(0.0f, std::min(diff2 / diff1, 1.0f));
+                                    // eq1_prune_lower_alpha = diff2 / diff1 ;
+                                }
+                                else if (diff1 < 0 && diff2 < 0)
+                                {
+                                    // equation 1 holds on when alpha > = diff2 / diff1
+                                    // eq1_prune_upper_alpha = diff2 / diff1 ;
+                                    tmp_prune_range_1 = std::make_pair(std::min(diff2 / diff1, 1.0f), 1.0f);
+                                }
+                                else if (diff1 < 0 && diff2 > 0)
+                                {
+                                    tmp_prune_range_1 = {0.0f, 1.0f};
+                                    // the equation hold forever
+                                }
+                                else if (diff1 > 0 && diff2 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_1 = {0.0f, 0.0f};
+                                }
+                                // now for equation 2
+                                float diff3 = xq_e_dist - cur_emb_dist + cur_geo_dist - xq_s_dist;
+                                float diff4 = cur_geo_dist - xq_s_dist;
+                                /*
+                                similar to previous
+                                */
+                                // when alpha >= eq1_prune_upper_alpha and alpha <= eq1_prune_lower_alpha, the equation holds on
+                                // float eq2_prune_upper_alpha = 1;
+                                // float eq2_prune_lower_alpha = 0;
+                                std::pair<float, float> tmp_prune_range_2;
+                                if (diff3 > 0 && diff4 > 0)
+                                {
+                                    // equation 2 holds on when alpha < = diff4 / diff3
+                                    // eq2_prune_upper_alpha = diff4 / diff3;
+                                    // tmp_prune_range.second = std::min(tmp_prune_range.second, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(0.0f, std::min(1.0f, diff4 / diff3));
+                                }
+                                else if (diff3 < 0 && diff4 < 0)
+                                {
+                                    // equation 2 holds on when alpha > = diff4 / diff3
+                                    // eq2_prune_lower_alpha = diff4 / diff3;
+                                    // tmp_prune_range.first = std::max(tmp_prune_range.first, diff4 / diff3);
+                                    tmp_prune_range_2 = std::make_pair(std::min(diff4 / diff3, 1.0f), 1.0f);
+                                }
+                                else if (diff3 < 0 && diff4 > 0)
+                                {
+                                    // the equation hold forever
+                                    // then we do not change the previous range
+                                    tmp_prune_range_2 = {0.0f, 1.0f};
+                                }
+                                else if (diff3 > 0 && diff4 < 0)
+                                {
+                                    // equation never hold
+                                    // break;
+                                    tmp_prune_range_2 = {0.0f, 0.0f};
+                                }
+
+                                std::pair<float, float> tmp_prune_range;
+                                tmp_prune_range.first = std::max(tmp_prune_range_1.first, tmp_prune_range_2.first);
+                                tmp_prune_range.second = std::min(tmp_prune_range_1.second, tmp_prune_range_2.second);
+
+                                if (tmp_prune_range.second > tmp_prune_range.first)
+                                {
+                                    // now we consider whether this range is useful range, that is (second > first)
+                                    // now we check its intersection range with shared_use_range
+                                    intersection(picked_use_range, tmp_prune_range, prune_range);
+                                }
+                                else
+                                {
+                                    continue;
+                                    // this range is not useful, so this edge will not be pruned by this selected edge
+                                }
+                            }
+
+                            prune_range = mergeIntervals(prune_range);
+                            std::vector<std::pair<float, float>> after_pruned_use_range;
+                            get_use_range(prune_range, after_pruned_use_range);
+                            float threshold = 0.1;
+                            float use_size = 0;
+                            for (int j = 0; j < after_pruned_use_range.size(); j++)
+                            {
+                                use_size = use_size + after_pruned_use_range[j].second - after_pruned_use_range[j].first;
+                            }
+                            if (use_size >= threshold)
+                            {
+                                picked.push_back(Index::DEGNeighbor(candidate[i].id_, candidate[i].emb_distance_,
+                                                                    candidate[i].geo_distance_, after_pruned_use_range, visited_layer));
+                            }
+                        }
+                    visited_layer++;
+                    if (picked.size() >= range)
+                        break;
+                }
+                if (picked.size() > range)
+                    picked.resize(range);
+                cut_graph_.swap(picked);
+            }
+        }
     }
+
 }
