@@ -194,11 +194,11 @@ namespace stkq {
         uint32_t loc_dim = final_index_->getBaseLocDim();
 
         for (unsigned i = 0; i < node_num; i++) {
-            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetSearchFriends().size();
+            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetFriends().size();
             max_nbr_len = std::max(neighbor_size, max_nbr_len);
             for (unsigned k = 0; k < neighbor_size; k++) {
-                Index::DEGSimpleNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetSearchFriends()[k];
-                max_alpha_range_len = std::max(max_alpha_range_len, (uint32_t)neighbor.active_range.size());
+                Index::DEGNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetFriends()[k];
+                max_alpha_range_len = std::max(max_alpha_range_len, (uint32_t)neighbor.available_range.size());
             }
         }
 
@@ -346,7 +346,7 @@ namespace stkq {
             std::memset(node_topo_buffer.data(), 0, fixed_topo_size);
             
             char* ptr = node_topo_buffer.data();
-            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetSearchFriends().size();
+            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetFriends().size();
 
             // 2. 写入实际数据
             // 2.1 写入邻居数量
@@ -355,14 +355,14 @@ namespace stkq {
 
             // 2.2 写入存在的邻居
             for (unsigned k = 0; k < neighbor_size; k++) {
-                Index::DEGSimpleNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetSearchFriends()[k];
+                Index::DEGNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetFriends()[k];
                 
                 // 写入 ID
                 std::memcpy(ptr, &neighbor.id_, sizeof(uint32_t));
                 ptr += sizeof(uint32_t);
 
                 // 写入 Range
-                auto &use_range = neighbor.active_range;
+                auto &use_range = neighbor.available_range;
                 unsigned range_size = use_range.size();
                 
                 // 即使 range 不满 max_alpha_range_len，我们也按顺序写，剩下的已经在 memset 0 时处理了
@@ -371,8 +371,8 @@ namespace stkq {
                 size_t range_bytes_used = 0;
                 for(size_t r = 0; r < range_size; ++r) {
                     // 将 pair 拆解写入
-                    int8_t x = use_range[r].first;
-                    int8_t y = use_range[r].second;
+                    int8_t x = static_cast<int8_t>(use_range[r].first * 100);
+                    int8_t y = static_cast<int8_t>(use_range[r].second * 100);
                     std::memcpy(ptr, &x, sizeof(int8_t)); ptr += sizeof(int8_t);
                     std::memcpy(ptr, &y, sizeof(int8_t)); ptr += sizeof(int8_t);
                     range_bytes_used += 2 * sizeof(int8_t);
