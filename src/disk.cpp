@@ -233,6 +233,12 @@ namespace stkq {
         copy_to_ptr(meta_ptr, &max_alpha_range_len, sizeof(uint32_t));
         copy_to_ptr(meta_ptr, &enterpoint_set_size, sizeof(uint32_t));
         copy_to_ptr(meta_ptr, enterpoint_set.data(), sizeof(uint32_t) * enterpoint_set_size);
+        std::cout << "node size: " << node_num << std::endl;
+        std::cout << "emb dim: " << emb_dim << std::endl;
+        std::cout << "loc dim: " << loc_dim << std::endl;
+        std::cout << "max aplha range len: " << max_alpha_range_len << std::endl;
+        std::cout << "max neighbor len: " << max_nbr_len << std::endl;
+        std::cout << "enter point size: " << enterpoint_set_size << std::endl;
 
         out_meta.write(meta_buffer.data(), aligned_meta_size);
         out_meta.close();
@@ -339,9 +345,9 @@ namespace stkq {
 
         std::unordered_set<uint32_t> ep_set{enterpoint_set.begin(), enterpoint_set.end()};
         for (size_t i = 0; i < node_num; i++) {
-            if (ep_set.find(i) != ep_set.end()) {
-                std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out_graph.tellp()) << " :" << i/6*PAGE_SIZE << std::endl;
-            }
+            // if (ep_set.find(i) != ep_set.end()) {
+            //     std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out_graph.tellp()) << " :" << i/6*PAGE_SIZE << std::endl;
+            // }
             // 1. 清空当前节点 Buffer (全部置 0，相当于完成了 Padding)
             std::memset(node_topo_buffer.data(), 0, fixed_topo_size);
             
