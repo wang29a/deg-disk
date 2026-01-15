@@ -116,7 +116,7 @@ namespace pipeann {
 
   inline void alloc_aligned(void **ptr, size_t size, size_t align) {
     *ptr = nullptr;
-    assert(IS_ALIGNED_(size, align));
+    assert(IS_ALIGNED(size, align));
     *ptr = ::aligned_alloc(align, size);
     assert(*ptr != nullptr);
   }

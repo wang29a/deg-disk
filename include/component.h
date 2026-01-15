@@ -707,7 +707,7 @@ void Hnsw2Neighbor(unsigned query, unsigned range, std::priority_queue<Index::BS
                 // std::vector<Index::DEGNeighbor> &picked);
                 std::vector<Index::DEGNeighbor> &cut_graph_, bool is_change = true);
 
-        void DEG2Neighbor(unsigned qnode, unsigned range, std::vector<Index::DEGNNDescentNeighbor> &pool, std::vector<Index::DEGNeighbor> &result, bool is_change = false)
+        void DEG2Neighbor(unsigned qnode, unsigned range, std::vector<Index::DEGNNDescentNeighbor> &pool, std::vector<Index::DEGNeighbor> &result, bool is_change = true)
         {
             PruneInner(pool, range, result, is_change);
         };

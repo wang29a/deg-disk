@@ -69,9 +69,9 @@ int main(int argc, char **argv)
 
     parameters.set<float>("max_spatial_distance", 1.0);
     parameters.set<float>("max_emb_distance", 1.0);
-    std::cout << ", max_m: " << parameters.get<unsigned>("max_m")
+    std::cout << "max_m: " << parameters.get<unsigned>("max_m")
                   << ", ef_construction: " << parameters.get<unsigned>("ef_construction")
-                  << ", threads: " << parameters.get<unsigned>("n_threads");
+                  << ", threads: " << parameters.get<unsigned>("n_threads") << std::endl;
 
     parameters.set<std::string>("exc_type", exc_type);
     parameters.set<int>("mult", -1);
