@@ -77,3 +77,13 @@ if [ ! -d "$OUTPUT_INDEX_PATH" ]; then
     echo "Creating output directory: $OUTPUT_INDEX_PATH"
     mkdir -p "$OUTPUT_INDEX_PATH"
 fi
+
+
+# 运行命令
+set -x # 开启调试模式，显示具体执行的命令
+$EXE_PATH \
+    "$BASE_IMG" \
+    "$BASE_TEXT" \
+    "$OUTPUT_INDEX_PATH" \
+    "$L_BUILD" "$DEGREE" "$MODE" "$THREADS"
+set +x # 关闭调试模式
