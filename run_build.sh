@@ -52,7 +52,7 @@ done
 # =================================================================
 
 # 可执行文件路径
-EXE_PATH="./test/disk_build"
+EXE_PATH="./build/test/disk_build"
 
 if [ ! -f "$EXE_PATH" ]; then
     echo "Error: Executable $EXE_PATH not found!"
