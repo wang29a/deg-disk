@@ -471,9 +471,9 @@ namespace stkq {
         std::cout << "loc dim: " << loc_dim << std::endl;
         std::cout<< "max data size: " << max_data_size << "B max aligned size: " << max_aligned_size << "B" << std::endl;
         for (size_t i = 0; i < node_num; i ++) {
-            if (ep_set.find(i) != ep_set.end()) {
-                std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out.tellp()) << std::endl;
-            }
+            // if (ep_set.find(i) != ep_set.end()) {
+            //     std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out.tellp()) << std::endl;
+            // }
             disk::NodeData data;
             data.emb.resize(emb_dim);
             data.loc.resize(loc_dim);

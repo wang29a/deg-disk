@@ -55,7 +55,7 @@ if(BLAS_FOUND)
 	link_libraries(${BLAS_LIBRARIES})
 endif()
 
-add_compile_options(-march=native -Wall -g -DINFO)
+add_compile_options(-march=native -Wall -g  -Ofast -DINFO)
 # add_definitions(-std=c++14)
 add_subdirectory(src)
 add_subdirectory(test)
