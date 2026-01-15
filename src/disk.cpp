@@ -446,11 +446,11 @@ namespace stkq {
         };
 
         copy_data(&node_num, sizeof(uint32_t));
+        copy_data(&emb_dim, sizeof(uint32_t));
+        copy_data(&loc_dim, sizeof(uint32_t));
         copy_data(&max_nbr_len, sizeof(uint32_t));
         copy_data(&max_alpha_range_len, sizeof(uint32_t));
         copy_data(&enterpoint_set_size, sizeof(uint32_t));
-        copy_data(&emb_dim, sizeof(uint32_t));
-        copy_data(&loc_dim, sizeof(uint32_t));
         copy_data(enterpoint_set.data(), sizeof(uint32_t)*enterpoint_set_size);
 
         out.write(buffer.data(), aligned_size);
@@ -464,11 +464,11 @@ namespace stkq {
                                 (max_nbr_len * (sizeof(uint32_t) + 2*max_alpha_range_len*sizeof(int8_t)));
         size_t max_aligned_size = disk::align_to_page_size(max_data_size);
         std::cout << "node size: " << node_num << std::endl;
+        std::cout << "emb dim: " << emb_dim << std::endl;
+        std::cout << "loc dim: " << loc_dim << std::endl;
         std::cout << "max aplha range len: " << max_alpha_range_len << std::endl;
         std::cout << "max neighbor len: " << max_nbr_len << std::endl;
         std::cout << "enter point size: " << enterpoint_set_size << std::endl;
-        std::cout << "emb dim: " << emb_dim << std::endl;
-        std::cout << "loc dim: " << loc_dim << std::endl;
         std::cout<< "max data size: " << max_data_size << "B max aligned size: " << max_aligned_size << "B" << std::endl;
         for (size_t i = 0; i < node_num; i ++) {
             // if (ep_set.find(i) != ep_set.end()) {
