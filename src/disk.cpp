@@ -34,15 +34,12 @@ namespace stkq {
 
         for (unsigned i = 0; i < final_index_->getBaseLen(); i++)
         {
-            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetSearchFriends().size();
+            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetFriends().size();
             max_nbr_len = std::max(neighbor_size, max_nbr_len);
             for (unsigned k = 0; k < neighbor_size; k++)
             {
-                Index::DEGSimpleNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetSearchFriends()[k];
-                std::vector<std::pair<int8_t, int8_t>> &use_range = neighbor.active_range;
-
-                unsigned range_size = use_range.size();
-                max_alpha_range_len = std::max(max_alpha_range_len, range_size);
+                Index::DEGNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetFriends()[k];
+                max_alpha_range_len = std::max(max_alpha_range_len, (uint32_t)neighbor.available_range.size());
             }
         }
         
@@ -112,16 +109,16 @@ namespace stkq {
             data.nbrs.resize(neighbor_size);
 
             for (size_t j = 0; j < neighbor_size; j ++) {
-                Index::DEGSimpleNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetSearchFriends()[j];
+                Index::DEGNeighbor &neighbor = final_index_->DEG_nodes_[i]->GetFriends()[j];
                 unsigned neighbor_id = neighbor.id_;
                 data.nbrs[j].id = neighbor_id;
-                std::vector<std::pair<int8_t, int8_t>> &use_range = neighbor.active_range;
+                auto &use_range = neighbor.available_range;
 
                 unsigned range_size = use_range.size();
                 data.nbrs[j].alpha_range.resize(max_alpha_range_len*2);
                 for (size_t k = 0; k < range_size; k ++) {
-                    int8_t x = use_range[k].first;
-                    int8_t y = use_range[k].second;
+                    int8_t x = static_cast<int8_t>(use_range[k].first * 100);
+                    int8_t y = static_cast<int8_t>(use_range[k].second * 100);
                     data.nbrs[j].alpha_range[2*k] = x;
                     data.nbrs[j].alpha_range[2*k+1] = y;
                 }
