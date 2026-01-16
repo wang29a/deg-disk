@@ -712,12 +712,67 @@ namespace disk {
         // 输出调试信息
         std::cout << "Loaded " << num << " entries from " << filename << " with dimension " << dim << std::endl;
     }
+    template <typename T>
+    inline void load_vector_data(const char *filename, T *&data, unsigned &num, unsigned &dim)
+    {
+        std::ifstream in(filename, std::ios::binary);
+        if (!in.is_open())
+        {
+            std::cerr << "Error opening file " << filename << std::endl;
+            exit(-1);
+        }
+
+        // 对应 load_bin_impl 中的逻辑：
+        // 先读取 num (npts) 和 dim，再读取数据块
+        int npts_i32, dim_i32;
+
+        // 1. 读取 Header (前8个字节通常是 num 和 dim)
+        in.read(reinterpret_cast<char *>(&npts_i32), sizeof(int));
+        in.read(reinterpret_cast<char *>(&dim_i32), sizeof(int));
+
+        if (in.fail())
+        {
+            std::cerr << "Error reading header (num, dim) from " << filename << std::endl;
+            exit(-1);
+        }
+
+        num = (unsigned)npts_i32;
+        dim = (unsigned)dim_i32;
+
+        // 输出调试信息 (类似 DLOG(INFO))
+        std::cout << "Metadata: #pts = " << num << ", #dims = " << dim << std::endl;
+
+        // 2. 分配内存
+        size_t total_elements = (size_t)num * dim;
+        try
+        {
+            data = new T[total_elements];
+        }
+        catch (std::bad_alloc &)
+        {
+            std::cerr << "Memory allocation failed for data in " << filename << std::endl;
+            exit(-1);
+        }
+
+        // 3. 一次性读取所有数据块 (Bulk Read)
+        // 对应 reader.read((char *) data, npts * dim * sizeof(T));
+        in.read(reinterpret_cast<char *>(data), total_elements * sizeof(T));
+
+        if (in.fail())
+        {
+            std::cerr << "Error reading data body from " << filename << std::endl;
+            delete[] data;
+            exit(-1);
+        }
+
+        in.close();
+    }
 
     void QueryData::load(char *query_emb_file, char *query_loc_file, char *query_alpha_file, char *ground_file, stkq::Parameters &parameters) {
         float *query_emb = nullptr;
         unsigned query_num{};
         unsigned query_emb_dim{};
-        load_data<float>(query_emb_file, query_emb, query_num, query_emb_dim);
+        load_vector_data<float>(query_emb_file, query_emb, query_num, query_emb_dim);
         setQueryEmbData(query_emb);
         setQueryLen(query_num);
         setQueryEmbDim(query_emb_dim);
@@ -725,20 +780,20 @@ namespace disk {
         float *query_loc = nullptr;
         unsigned query_loc_num{};
         unsigned query_loc_dim{};
-        load_data(query_loc_file, query_loc, query_loc_num, query_loc_dim);
+        load_vector_data(query_loc_file, query_loc, query_loc_num, query_loc_dim);
         setQueryLocData(query_loc);
         setQueryLocDim(query_loc_dim);
         assert(query_loc_num == getQueryLen());
         float *query_alpha = nullptr;
         unsigned query_alpha_num{};
         unsigned query_alpha_dim{};
-        load_data(query_alpha_file, query_alpha, query_alpha_num, query_alpha_dim);
+        load_vector_data(query_alpha_file, query_alpha, query_alpha_num, query_alpha_dim);
         setQueryWeightData(query_alpha);
         assert(query_loc_num == getQueryLen());
         unsigned *ground_data = nullptr;
         unsigned ground_num{};
         unsigned ground_dim{};
-        load_data<unsigned>(ground_file, ground_data, ground_num, ground_dim);
+        load_vector_data<unsigned>(ground_file, ground_data, ground_num, ground_dim);
         setGroundData(ground_data);
         setGroundLen(ground_num);
         setGroundDim(ground_dim);
