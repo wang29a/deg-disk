@@ -51,8 +51,8 @@ int main(int argc, char **argv)
     stkq::Parameters parameters;
     uint32_t arg_idx = 0;
     arg_idx ++;
-    parameters.set<std::string>("disk_index_path", argv[arg_idx ++]);
-    std::string disk_index_file = argv[4];
+    parameters.set<std::string>("disk_index_path", argv[arg_idx]);
+    std::string disk_index_file = argv[arg_idx ++];
     disk_index_file += "baseline_disk.index";
     parameters.set<std::string>("disk_index_file", disk_index_file);
     parameters.set<unsigned>("n_threads", 8);
