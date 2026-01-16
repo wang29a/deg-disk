@@ -243,7 +243,7 @@ namespace stkq {
         std::cout << "loc dim: " << loc_dim << std::endl;
         std::cout << "max aplha range len: " << max_alpha_range_len << std::endl;
         std::cout << "max neighbor len: " << max_nbr_len << std::endl;
-        std::cout << "nnodes_per_sector: " << max_nbr_len << std::endl;
+        std::cout << "nnodes_per_sector: " << nnodes_per_sector << std::endl;
         std::cout << "enter point size: " << enterpoint_set_size << std::endl;
 
         out_meta.write(meta_buffer.data(), aligned_meta_size);
