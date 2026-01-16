@@ -1,6 +1,7 @@
 
 #include "builder.h"
 #include "disk_util.h"
+#include "utils.h"
 #include "disk.h"
 #include <algorithm>
 #include <cassert>
@@ -208,6 +209,9 @@ namespace stkq {
             enterpoint_set.emplace_back(final_index_->DEG_enterpoints[i]->GetId());
         }
 
+        uint32_t single_neighbor_size = sizeof(uint32_t) + (2 * max_alpha_range_len * sizeof(int8_t));
+        size_t fixed_topo_size = sizeof(uint32_t) + (max_nbr_len * single_neighbor_size);
+        uint64_t nnodes_per_sector = SECTOR_LEN / fixed_topo_size;
         // ==========================================
         // Part 1: 写入 Meta Data (一次性写入即可，通常较小)
         // ==========================================
@@ -231,6 +235,7 @@ namespace stkq {
         copy_to_ptr(meta_ptr, &loc_dim, sizeof(uint32_t));
         copy_to_ptr(meta_ptr, &max_nbr_len, sizeof(uint32_t));
         copy_to_ptr(meta_ptr, &max_alpha_range_len, sizeof(uint32_t));
+        copy_to_ptr(meta_ptr, &nnodes_per_sector, sizeof(uint64_t));
         copy_to_ptr(meta_ptr, &enterpoint_set_size, sizeof(uint32_t));
         copy_to_ptr(meta_ptr, enterpoint_set.data(), sizeof(uint32_t) * enterpoint_set_size);
         std::cout << "node size: " << node_num << std::endl;
@@ -238,6 +243,7 @@ namespace stkq {
         std::cout << "loc dim: " << loc_dim << std::endl;
         std::cout << "max aplha range len: " << max_alpha_range_len << std::endl;
         std::cout << "max neighbor len: " << max_nbr_len << std::endl;
+        std::cout << "nnodes_per_sector: " << max_nbr_len << std::endl;
         std::cout << "enter point size: " << enterpoint_set_size << std::endl;
 
         out_meta.write(meta_buffer.data(), aligned_meta_size);
@@ -334,8 +340,8 @@ namespace stkq {
         // 计算单个节点的固定拓扑大小 (Fixed Size)
         // 结构: [Nbr Count (4B)] + [Nbr_1 ID] [Nbr_1 Range] ... [Nbr_Max ID] [Nbr_Max Range]
         // 即使邻居不够 Max 个，也要预留空间填 0
-        uint32_t single_neighbor_size = sizeof(uint32_t) + (2 * max_alpha_range_len * sizeof(int8_t));
-        size_t fixed_topo_size = sizeof(uint32_t) + (max_nbr_len * single_neighbor_size);
+        single_neighbor_size = sizeof(uint32_t) + (2 * max_alpha_range_len * sizeof(int8_t));
+        fixed_topo_size = sizeof(uint32_t) + (max_nbr_len * single_neighbor_size);
 
         std::cout << "Writing Graph Topology... Fixed Node Size: " << fixed_topo_size << " B" << std::endl;
 
