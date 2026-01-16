@@ -26,6 +26,7 @@ void DISK(stkq::Parameters &parameters)
         disk_index->load_query_data(&query_emb_path[0], &query_loc_path[0], &query_alpha_path[0], &ground_path[0], parameters);
         builder->peak_memory_footprint();
         disk_index->load_metadata(disk_index_file.data());
+        // disk_index->load_graph_disk(disk_index_file.data());
         builder->peak_memory_footprint();
         disk_index->search();
         builder->peak_memory_footprint();

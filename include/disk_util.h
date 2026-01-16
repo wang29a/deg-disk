@@ -109,8 +109,8 @@ struct ScratchContext {
         emb_size = ROUND_UP(sizeof(float) * emb_dim, 256);
         loc_size = ROUND_UP(sizeof(float) * loc_dim, 256);
         // 假设 defaults::MAX_N_SECTOR_READS 和 SECTOR_LEN 是全局常量
-        size_t max_sector_reads = 32; // 示例值
-        size_t sector_len = 4096;     // 示例值
+        size_t max_sector_reads = 64; // 示例值
+        size_t sector_len = 8192;     // 示例值
         sector_size = max_sector_reads * sector_len;
 
         alloc_aligned((void **)&emb_scratch, emb_size, 256);

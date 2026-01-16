@@ -104,7 +104,7 @@ namespace stkq {
             memcpy(data.emb.data(), final_index_->getBaseEmbData()+i*emb_dim, emb_dim*sizeof(float));
             memcpy(data.loc.data(), final_index_->getBaseLocData()+i*loc_dim, loc_dim*sizeof(float));
 
-            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetSearchFriends().size();
+            unsigned neighbor_size = final_index_->DEG_nodes_[i]->GetFriends().size();
             data.nnbr = neighbor_size;
             data.nbrs.resize(neighbor_size);
 
@@ -576,61 +576,61 @@ namespace disk {
         uint64_t n_iters = ROUND_UP(read_reqs.size(), MAX_EVENTS) / MAX_EVENTS;
         for (uint64_t iter = 0; iter < n_iters; iter++)
         {
-            // uint64_t n_ops = std::min((uint64_t)read_reqs.size() - (iter * MAX_EVENTS), (uint64_t)MAX_EVENTS);
-            // std::vector<iocb_t *> cbs(n_ops, nullptr);
-            // std::vector<io_event_t> evts(n_ops);
-            // std::vector<struct iocb> cb(n_ops);
-            // for (uint64_t j = 0; j < n_ops; j++)
-            // {
-            //     io_prep_pread(cb.data() + j, fd, read_reqs[j + iter * MAX_EVENTS].buf, read_reqs[j + iter * MAX_EVENTS].len,
-            //                 read_reqs[j + iter * MAX_EVENTS].offset);
-            // }
+            uint64_t n_ops = std::min((uint64_t)read_reqs.size() - (iter * MAX_EVENTS), (uint64_t)MAX_EVENTS);
+            std::vector<iocb_t *> cbs(n_ops, nullptr);
+            std::vector<io_event_t> evts(n_ops);
+            std::vector<struct iocb> cb(n_ops);
+            for (uint64_t j = 0; j < n_ops; j++)
+            {
+                io_prep_pread(cb.data() + j, fd, read_reqs[j + iter * MAX_EVENTS].buf, read_reqs[j + iter * MAX_EVENTS].len,
+                            read_reqs[j + iter * MAX_EVENTS].offset);
+            }
 
-            // // initialize `cbs` using `cb` array
-            // //
+            // initialize `cbs` using `cb` array
+            //
 
-            // for (uint64_t i = 0; i < n_ops; i++)
-            // {
-            //     cbs[i] = cb.data() + i;
-            // }
+            for (uint64_t i = 0; i < n_ops; i++)
+            {
+                cbs[i] = cb.data() + i;
+            }
 
-            // uint64_t n_tries = 0;
-            // while (n_tries <= n_retries)
-            // {
-            //     // issue reads
-            //     int64_t ret = io_submit(ctx, (int64_t)n_ops, cbs.data());
-            //     // if requests didn't get accepted
-            //     if (ret != (int64_t)n_ops)
-            //     {
-            //         std::cerr << "io_submit() failed; returned " << ret << ", expected=" << n_ops << ", ernno=" << errno
-            //                 << "=" << ::strerror(-ret) << ", try #" << n_tries + 1;
-            //         std::cout << "ctx: " << ctx << "\n";
-            //         exit(-1);
-            //     }
-            //     else
-            //     {
-            //         // wait on io_getevents
-            //         ret = io_getevents(ctx, (int64_t)n_ops, (int64_t)n_ops, evts.data(), nullptr);
-            //         // if requests didn't complete
-            //         if (ret != (int64_t)n_ops)
-            //         {
-            //             std::cerr << "io_getevents() failed; returned " << ret << ", expected=" << n_ops
-            //                     << ", ernno=" << errno << "=" << ::strerror(-ret) << ", try #" << n_tries + 1;
-            //             exit(-1);
-            //         }
-            //         else
-            //         {
-            //             break;
-            //         }
-            //     }
-            // }
-            // // disabled since req.buf could be an offset into another buf
-            // /*
-            // for (auto &req : read_reqs) {
-            // // corruption check
-            // assert(malloc_usable_size(req.buf) >= req.len);
-            // }
-            // */
+            uint64_t n_tries = 0;
+            while (n_tries <= n_retries)
+            {
+                // issue reads
+                int64_t ret = io_submit(ctx, (int64_t)n_ops, cbs.data());
+                // if requests didn't get accepted
+                if (ret != (int64_t)n_ops)
+                {
+                    std::cerr << "io_submit() failed; returned " << ret << ", expected=" << n_ops << ", ernno=" << errno
+                            << "=" << ::strerror(-ret) << ", try #" << n_tries + 1;
+                    std::cout << "ctx: " << ctx << "\n";
+                    exit(-1);
+                }
+                else
+                {
+                    // wait on io_getevents
+                    ret = io_getevents(ctx, (int64_t)n_ops, (int64_t)n_ops, evts.data(), nullptr);
+                    // if requests didn't complete
+                    if (ret != (int64_t)n_ops)
+                    {
+                        std::cerr << "io_getevents() failed; returned " << ret << ", expected=" << n_ops
+                                << ", ernno=" << errno << "=" << ::strerror(-ret) << ", try #" << n_tries + 1;
+                        exit(-1);
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+            }
+            // disabled since req.buf could be an offset into another buf
+            /*
+            for (auto &req : read_reqs) {
+            // corruption check
+            assert(malloc_usable_size(req.buf) >= req.len);
+            }
+            */
         }
     }
 

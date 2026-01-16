@@ -162,6 +162,9 @@ namespace disk {
         }
 
         void load_metadata(const char *index_file);
+
+        void load_graph_disk(char *graph_file);
+
     private:
         stkq::E_Distance *get_E_Dist() const
         {
@@ -247,10 +250,10 @@ namespace disk {
         int file_desc_;
         io_context_t ctx_;
 
-        // float *emb_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
-        // float *loc_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
+        float *emb_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
+        float *loc_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
 
-        // char *sector_scratch_ = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
+        char *sector_scratch_ = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
         size_t sector_idx_ = 0;          // index of next [SECTOR_LEN] scratch to use
         std::unique_ptr<ScratchPool> scratch_pool_;
 

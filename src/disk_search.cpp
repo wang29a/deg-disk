@@ -48,18 +48,18 @@ namespace disk {
     }
 
     void DiskIndex::setup_sector_scratch() {
-        // size_t emb_alloc_size = ROUND_UP(sizeof(float) * emb_dim_, 256);
-        // size_t loc_alloc_size = ROUND_UP(sizeof(float) * loc_dim_, 256);
+        size_t emb_alloc_size = ROUND_UP(sizeof(float) * emb_dim_, 256);
+        size_t loc_alloc_size = ROUND_UP(sizeof(float) * loc_dim_, 256);
 
-        // std::cout<< emb_alloc_size << " " << loc_alloc_size << std::endl;
-        // alloc_aligned((void **)&emb_scratch, emb_alloc_size, 256);
-        // alloc_aligned((void **)&loc_scratch, loc_alloc_size, 256);
-        // alloc_aligned((void **)&sector_scratch_, defaults::MAX_N_SECTOR_READS * defaults::SECTOR_LEN,
-        //            defaults::SECTOR_LEN);
-        // // ::alloc_aligned((void **)&this->_aligned_query_T, aligned_dim * sizeof(T), 8 * sizeof(T));
+        std::cout<< emb_alloc_size << " " << loc_alloc_size << std::endl;
+        alloc_aligned((void **)&emb_scratch, emb_alloc_size, 256);
+        alloc_aligned((void **)&loc_scratch, loc_alloc_size, 256);
+        alloc_aligned((void **)&sector_scratch_, defaults::MAX_N_SECTOR_READS * defaults::SECTOR_LEN,
+                   defaults::SECTOR_LEN);
+        // ::alloc_aligned((void **)&this->_aligned_query_T, aligned_dim * sizeof(T), 8 * sizeof(T));
 
-        // memset(emb_scratch, 0, emb_alloc_size);
-        // memset(loc_scratch, 0, loc_alloc_size);
+        memset(emb_scratch, 0, emb_alloc_size);
+        memset(loc_scratch, 0, loc_alloc_size);
 
     }
 
@@ -210,14 +210,13 @@ namespace disk {
         bool m_first = false;
         auto ctx = scratch_pool_->acquire();
         auto sector_scratch_ = ctx->sector_scratch;
-        auto &sector_idx = ctx->sector_scratch;
+        auto &sector_idx_ = ctx->sector_idx;
         auto emb_scratch = ctx->emb_scratch;
-        auto loc_scratch = ctx->emb_scratch;
+        auto loc_scratch = ctx->loc_scratch;
 
         std::vector<unsigned> load;
         std::vector<std::pair<unsigned, char*>> load_datas;
         std::vector<AlignedRead> read_reqs;
-        sector_idx_ = 0;
         const uint64_t num_sectors_per_node =
             _nnodes_per_sector > 0 ? 1 : DIV_ROUND_UP(_max_node_len, defaults::SECTOR_LEN);
 
