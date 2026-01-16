@@ -198,8 +198,8 @@ namespace disk {
     }
 
     void DiskIndex::SearchAtLayer(unsigned qnode,
-                                    stkq::Index::VisitedList *visited_list,
-                                    std::priority_queue<stkq::Index::DEG_FurtherFirst> &result)
+                                stkq::Index::VisitedList *visited_list,
+                                std::priority_queue<stkq::Index::DEG_FurtherFirst> &result)
     {
         const auto L = search_l_;
 
@@ -211,262 +211,299 @@ namespace disk {
         std::vector<unsigned> load;
         std::vector<std::pair<unsigned, char*>> load_datas;
         std::vector<AlignedRead> read_reqs;
-        auto query_buf = new pipeann::QueryBuffer<float>();
-        init_query_buf(*query_buf);
-        std::memcpy(query_buf->aligned_query_e_T, query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_dim_ * sizeof(float));
-        std::memcpy(query_buf->aligned_query_e_T, query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_dim_ * sizeof(float));
-        const float *querye = query_buf->aligned_query_e_T;
-        const float *queryl = query_buf->aligned_query_l_T;
-
-        // reset query
-        query_buf->reset();
-
-        // pointers to current vector for comparison
-        float *data_emb_buf = query_buf->coord_e_scratch;
-        float *data_loc_buf = query_buf->coord_l_scratch;
-        _mm_prefetch((char *) data_emb_buf, _MM_HINT_T1);
-        _mm_prefetch((char *) data_loc_buf, _MM_HINT_T1);
-
-        // sector scratch
-        char *sector_scratch = query_buf->sector_scratch;
-        uint64_t &sector_idx = query_buf->sector_idx;
-
-        emb_handler_->initialize_query(querye, query_buf->nbr_ctx_e_scratch);
-        float *diste_scratch = query_buf->aligned_diste_scratch;
-
-        loc_handler_->initialize_query(queryl, query_buf->nbr_ctx_l_scratch);
-        float *distl_scratch = query_buf->aligned_distl_scratch;
-
+        sector_idx_ = 0;
         const uint64_t num_sectors_per_node =
             _nnodes_per_sector > 0 ? 1 : DIV_ROUND_UP(_max_node_len, defaults::SECTOR_LEN);
-        
-        // std::cout << emb_step << " " << loc_step << std::endl;
 
-        emb_handler_->compute_dists(
-            query_buf->nbr_vec_e_scratch,
-            query_buf->nbr_ctx_e_scratch,
-            query_buf->aligned_diste_scratch,
-            this->enterpoint_set.data(), this->enterpoint_set.size()
-        );
-
-        loc_handler_->compute_dists(
-            query_buf->nbr_vec_l_scratch,
-            query_buf->nbr_ctx_l_scratch,
-            query_buf->aligned_distl_scratch,
-            this->enterpoint_set.data(), this->enterpoint_set.size()
-        );
         for (size_t i = 0; i < this->enterpoint_set.size(); i++)
         {
             auto id = this->enterpoint_set[i];
-            float cur_e_d = std::sqrt(diste_scratch[id]);
-            float cur_s_d = std::sqrt(distl_scratch[id]);
-            float cur_dist = alpha_ * cur_e_d + (1 - alpha_) * cur_s_d;
-            std::cout<< "id: " << id << " dist: " << cur_dist << " " << cur_e_d << " " << cur_s_d << " " << alpha_ << std::endl;
-            candidates.emplace(id, cur_dist);
+            load.emplace_back(id);
         }
-        // for (size_t i = 0; i < this->enterpoint_set.size(); i++)
-        // {
-        //     auto id = this->enterpoint_set[i];
-        //     load.emplace_back(id);
-        // }
-        // for (size_t i = 0; i < load.size(); i++)
-        // {
-        //     auto id = load[i];
-        //     std::pair<unsigned, char*> load_data;
-        //     load_data.first = id;
-        //     load_data.second = sector_scratch + num_sectors_per_node * sector_idx * defaults::SECTOR_LEN;
-        //     sector_idx ++;
+        for (size_t i = 0; i < load.size(); i++)
+        {
+            auto id = load[i];
+            std::pair<unsigned, char*> load_data;
+            load_data.first = id;
+            load_data.second = sector_scratch_ + num_sectors_per_node * sector_idx_ * defaults::SECTOR_LEN;
+            sector_idx_ ++;
 
-        //     load_datas.emplace_back(load_data);
-        //     // std::cout<< "ep: " << id << " offest: " << get_node_sector(id)*defaults::SECTOR_LEN << std::endl;
-        //     read_reqs.emplace_back(get_node_sector(id)*defaults::SECTOR_LEN,
-        //                            num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
-        // }
+            load_datas.emplace_back(load_data);
+            // std::cout<< "ep: " << id << " offest: " << get_node_sector(id)*defaults::SECTOR_LEN << std::endl;
+            read_reqs.emplace_back(get_node_sector(id)*defaults::SECTOR_LEN,
+                                   num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
+        }
 
-        // execute_io(ctx_, file_desc_, read_reqs);
-        // for (auto &data: load_datas) {
-        //     auto id = data.first;
-        //     char *node_disk_buf = offset_to_node(data.second, data.first);
-        //     uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
-        //     uint64_t nnbrs = (uint64_t)(*node_buf);
-        //     float *node_fp_emb = offset_to_node_emb(data.second);
-        //     float *node_fp_loc = offset_to_node_loc(data.second);
-        //     memcpy(emb_scratch, node_fp_emb, emb_dim_*sizeof(float));
-        //     memcpy(loc_scratch, node_fp_loc, loc_dim_*sizeof(float));
-        //     float cur_e_d =
-        //         get_E_Dist()->
-        //             compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
-        //     addDistCount();
+        execute_io(ctx_, file_desc_, read_reqs);
+        for (auto &data: load_datas) {
+            auto id = data.first;
+            char *node_disk_buf = offset_to_node(data.second, data.first);
+            uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
+            uint64_t nnbrs = (uint64_t)(*node_buf);
+            float *node_fp_emb = offset_to_node_emb(data.second);
+            float *node_fp_loc = offset_to_node_loc(data.second);
+            memcpy(emb_scratch, node_fp_emb, emb_dim_*sizeof(float));
+            memcpy(loc_scratch, node_fp_loc, loc_dim_*sizeof(float));
+            float cur_e_d =
+                get_E_Dist()->
+                    compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+            addDistCount();
 
-        //     float cur_s_d = 
-        //         get_S_Dist()->
-        //             compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
-        //     addDistCount();
+            float cur_s_d = 
+                get_S_Dist()->
+                    compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
+            addDistCount();
 
-        //     float cur_dist = alpha_ * cur_e_d + (1 - alpha_) * cur_s_d;
+            float cur_dist = alpha_ * cur_e_d + (1 - alpha_) * cur_s_d;
 
-        //     // std::cout<< "id: " << id << " dist: " << cur_dist << " " << cur_e_d << " " << cur_s_d << " " << alpha_ << std::endl;
+            // std::cout<< "id: " << id << " dist: " << cur_dist << " " << cur_e_d << " " << cur_s_d << " " << alpha_ << std::endl;
 
-        //     result.emplace(id, cur_dist);
-        //     candidates.emplace(id, cur_dist);
+            result.emplace(id, cur_dist);
+            candidates.emplace(id, cur_dist);
 
-        //     visited_list->MarkAsVisited(id);
-        // }
-        // auto top1 = candidates.top();
+            visited_list->MarkAsVisited(id);
+        }
+        auto top1 = candidates.top();
 
         // while (!candidates.empty()) {
         //     candidates.pop();
         // }
         // candidates.push(top1);
 
-        // while (!candidates.empty())
-        // {
-        //     load.clear();
-        //     load_datas.clear();
-        //     read_reqs.clear();
-        //     sector_idx = 0;
-        //     const stkq::Index::DEG_CloserFirst &candidate = candidates.top();
-        //     if (result.size() >= L) {
-        //     // float lower_bound = result.top().GetDistance();
-        //     // if (candidate.GetDistance() > lower_bound) {
-        //         break;
-        //     // }
-        //     }
+        while (!candidates.empty())
+        {
+            load.clear();
+            load_datas.clear();
+            read_reqs.clear();
+            sector_idx_ = 0;
+            const stkq::Index::DEG_CloserFirst &candidate = candidates.top();
+            float lower_bound = result.top().GetDistance();
+            if (candidate.GetDistance() > lower_bound) {
+                break;
+            }
 
-        //     auto candidate_id = candidate.GetId();
-        //     // std::cout<< candidate.GetDistance() << std::endl;
-        //     candidates.pop();
-        //     addHopCount();
-        //     load.emplace_back(candidate_id);
+            auto candidate_id = candidate.GetId();
+            // std::cout<< candidate.GetDistance() << std::endl;
+            candidates.pop();
+            addHopCount();
+            load.emplace_back(candidate_id);
 
-        //     // 加载数据 目标是邻居
-        //     if (!load.empty()) {
-        //         for (size_t i = 0; i < load.size(); i ++) {
-        //             auto id = load[i];
-        //             std::pair<unsigned, char*> load_data;
-        //             load_data.first = id;
-        //             load_data.second = sector_scratch + num_sectors_per_node * sector_idx * defaults::SECTOR_LEN;
-        //             sector_idx ++;
+            // 加载数据 目标是邻居
+            if (!load.empty()) {
+                for (size_t i = 0; i < load.size(); i ++) {
+                    auto id = load[i];
+                    std::pair<unsigned, char*> load_data;
+                    load_data.first = id;
+                    load_data.second = sector_scratch_ + num_sectors_per_node * sector_idx_ * defaults::SECTOR_LEN;
+                    sector_idx_ ++;
 
-        //             load_datas.emplace_back(load_data);
-        //             read_reqs.emplace_back(get_node_sector(id)*defaults::SECTOR_LEN,
-        //                                     num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
-        //         }
+                    load_datas.emplace_back(load_data);
+                    read_reqs.emplace_back(get_node_sector(id)*defaults::SECTOR_LEN,
+                                            num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
+                }
 
-        //         execute_io(ctx_, file_desc_, read_reqs);
-        //     }
+                execute_io(ctx_, file_desc_, read_reqs);
+            }
 
-        //     load.clear();
+            load.clear();
 
 
-        //     for (auto &data : load_datas) {
-        //         auto id = data.first;
-        //         float *node_fp_emb = offset_to_node_emb(data.second);
-        //         float *node_fp_loc = offset_to_node_loc(data.second);
-
-        //         memcpy(emb_scratch, node_fp_emb, emb_dim_*sizeof(float));
-        //         memcpy(loc_scratch, node_fp_loc, loc_dim_*sizeof(float));
-        //         float cur_e_d =
-        //             get_E_Dist()->
-        //                 compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
-        //         addDistCount();
-
-        //         float cur_s_d = 
-        //             get_S_Dist()->
-        //                 compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
-        //         addDistCount();
-
-        //         float cur_dist = alpha_ * cur_e_d + (1 - alpha_) * cur_s_d;
-
-        //         result.emplace(id, cur_dist);
-        //         if (result.size() > L)
-        //             result.pop();
-
-
-        //         char *node_disk_buf = offset_to_node(data.second, data.first);
-        //         uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
-        //         uint32_t nnbrs = (uint32_t)(*node_buf);
+            for (auto &data : load_datas) {
+                auto id = data.first;
+                char *node_disk_buf = offset_to_node(data.second, data.first);
+                uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
+                uint32_t nnbrs = (uint32_t)(*node_buf);
                 
-        //         visited_list->MarkAsVisited(id);
+                visited_list->MarkAsVisited(id);
 
-        //         // neighbor
-        //         char *node_nbrs = (char *)(node_buf + 1);
+                // neighbor
+                char *node_nbrs = (char *)(node_buf + 1);
 
 
-        //         uint32_t nbr_data_len = _max_alpha_range_len*2+sizeof(uint32_t);
-        //         std::vector<uint32_t> nbrs;
-        //         nbrs.reserve(nnbrs);
-        //         for (size_t i = 0; i < nnbrs; i ++) {
-        //             uint32_t neighbor_id = *(uint32_t*)(node_nbrs + i * nbr_data_len);
-        //             nbrs.emplace_back(neighbor_id);
-        //         }
+                // TODO add to class
+                uint32_t nbr_data_len = _max_alpha_range_len*2+sizeof(uint32_t);
+                for (size_t i = 0; i < nnbrs; i ++) {
+                    uint32_t neighbor_id = *(uint32_t*)(node_nbrs+i*nbr_data_len);
+                    // assert(_max_nbr_len == (_max_alpha_range_len+sizeof(unsigned)));
+                    std::vector<std::pair<int8_t, int8_t>> use_range;
+                    for (size_t k = 0; k < _max_alpha_range_len; k ++) {
+                        int8_t alpha1 = (*(int8_t *)(node_nbrs+nbr_data_len*i+sizeof(uint32_t)+k*2));
+                        int8_t alpha2 = (*(int8_t *)(node_nbrs+nbr_data_len*i+sizeof(uint32_t)+k*2+1));
+                        if(!(alpha1<=100) || !(alpha1>=0) || !(alpha2<=100) || !(alpha2>=0)){
+                            break;
+                        }
+                        if(alpha1 == 0 && alpha2 == 0) {
+                            break;
+                        }
+                        use_range.emplace_back(alpha1, alpha2);
+                    }
 
-        //         emb_handler_->compute_dists(
-        //             query_buf->nbr_vec_e_scratch,
-        //             query_buf->nbr_ctx_e_scratch,
-        //             query_buf->aligned_diste_scratch,
-        //             nbrs.data(), nnbrs
-        //         );
+                    bool search_flag = false;
+                    for (int i = 0; i < use_range.size(); i++)
+                    {
+                        if (alpha_ * 100 >= use_range[i].first && alpha_ * 100 <= use_range[i].second) {
+                            search_flag = true;
+                            break;
+                        }
+                        if (alpha_ * 100 < use_range[i].first) {
+                            break;
+                        }
+                        if (alpha_ * 100 > use_range[i].second) {
+                            continue;
+                        }
+                    }
 
-        //         loc_handler_->compute_dists(
-        //             query_buf->nbr_vec_l_scratch,
-        //             query_buf->nbr_ctx_l_scratch,
-        //             query_buf->aligned_distl_scratch,
-        //             nbrs.data(), nnbrs
-        //         );
+                    // search_flag = true;
+                    if (search_flag) {
+                        if (visited_list->NotVisited(neighbor_id)) {
+                            visited_list->MarkAsVisited(neighbor_id);
+                            load.emplace_back(neighbor_id);
+                        }
+                    }
+                }
+            }
 
-        //         for (size_t i = 0; i < nnbrs; i ++) {
-        //             uint32_t neighbor_id = *(uint32_t*)(node_nbrs+i*nbr_data_len);
-        //             // assert(_max_nbr_len == (_max_alpha_range_len+sizeof(unsigned)));
-        //             std::vector<std::pair<int8_t, int8_t>> use_range;
-        //             for (size_t k = 0; k < _max_alpha_range_len; k ++) {
-        //                 int8_t alpha1 = (*(int8_t *)(node_nbrs+nbr_data_len*i+sizeof(uint32_t)+k*2));
-        //                 int8_t alpha2 = (*(int8_t *)(node_nbrs+nbr_data_len*i+sizeof(uint32_t)+k*2+1));
-        //                 if(!(alpha1<=100) || !(alpha1>=0) || !(alpha2<=100) || !(alpha2>=0)){
-        //                     break;
-        //                 }
-        //                 if(alpha1 == 0 && alpha2 == 0) {
-        //                     break;
-        //                 }
-        //                 use_range.emplace_back(alpha1, alpha2);
-        //             }
+            load_datas.clear();
+            read_reqs.clear();
+            sector_idx_ = 0;
 
-        //             bool search_flag = false;
-        //             for (int i = 0; i < use_range.size(); i++)
-        //             {
-        //                 if (alpha_ * 100 >= use_range[i].first && alpha_ * 100 <= use_range[i].second) {
-        //                     search_flag = true;
-        //                     break;
-        //                 }
-        //                 if (alpha_ * 100 < use_range[i].first) {
-        //                     break;
-        //                 }
-        //                 if (alpha_ * 100 > use_range[i].second) {
-        //                     continue;
-        //                 }
-        //             }
+            // 加载数据 目标是数据
+            if (!load.empty()) {
+                for (size_t i = 0; i < load.size(); i ++) {
+                    auto id = load[i];
+                    std::pair<unsigned, char*> load_data;
+                    load_data.first = id;
+                    load_data.second = sector_scratch_ + num_sectors_per_node * sector_idx_ * defaults::SECTOR_LEN;
+                    sector_idx_ ++;
 
-        //             // search_flag = true;
-        //             if (search_flag) {
-        //                 if (visited_list->NotVisited(neighbor_id)) {
-        //                     visited_list->MarkAsVisited(neighbor_id);
-        //                     float e_d = diste_scratch[i];
-        //                     //     get_E_Dist()->
-        //                     //         compare(query_data.getQueryEmbData()+neighbor_id*emb_dim_, emb_data_, emb_dim_);
+                    load_datas.emplace_back(load_data);
+                    read_reqs.emplace_back(get_node_sector(id)*defaults::SECTOR_LEN,
+                                            num_sectors_per_node*defaults::SECTOR_LEN, load_data.second);
+                }
 
-        //                     //     addDistCount();
-        //                     float s_d = distl_scratch[i];
-        //                     //     get_S_Dist()->
-        //                     //         compare(query_data.getQueryLocData()+neighbor_id*loc_dim_, loc_data_, loc_dim_);
+                execute_io(ctx_, file_desc_, read_reqs);
+            }
+            for (auto &data : load_datas) {
+                auto id = data.first;
+                // char *node_disk_buf = offset_to_node(data.second, data.first);
+                // uint32_t *node_buf = offset_to_node_nhood(node_disk_buf);
+                // uint32_t nnbrs = (uint32_t)(*node_buf);
+                float *node_fp_emb = offset_to_node_emb(data.second);
+                float *node_fp_loc = offset_to_node_loc(data.second);
 
-        //                     //     addDistCount();
-        //                     float d = alpha_ * e_d + (1 - alpha_) * s_d;
-        //                     candidates.emplace(neighbor_id, d);
-        //                 }
-        //             }
-        //         }
-        //     }
+                memcpy(emb_scratch, node_fp_emb, emb_dim_*sizeof(float));
+                memcpy(loc_scratch, node_fp_loc, loc_dim_*sizeof(float));
+                
 
-        // }
+                if (result.size() >= L) {
+                    if (m_first) {
+                        float threshold = result.top().GetDistance();
+
+                        float s_d = 
+                            get_S_Dist()->
+                                compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
+
+            addDistCount();
+                        if ((1 - alpha_) * s_d >= threshold)
+                        {
+                            continue;
+                        }
+
+                        float e_d =
+                            get_E_Dist()->
+                                compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+
+            addDistCount();
+                        float d = alpha_ * e_d + (1 - alpha_) * s_d;
+
+                        if (threshold > d)
+                        {
+                            result.emplace(id, d);
+                            candidates.emplace(id, d);
+                            if (result.size() > L)
+                                result.pop();
+                        }
+                    }
+                    else
+                    {
+                        float threshold = result.top().GetDistance();
+
+                        if (alpha_ <= 0.5)
+                        {
+                            float s_d = 
+                                get_S_Dist()->
+                                    compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
+
+            addDistCount();
+                            if ((1 - alpha_) * s_d >= threshold)
+                            {
+                                continue;
+                            }
+
+            addDistCount();
+                            float e_d =
+                                get_E_Dist()->
+                                    compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+                            float d = alpha_ * e_d + (1 - alpha_) * s_d;
+
+                            if (threshold > d)
+                            {
+                                result.emplace(id, d);
+                                candidates.emplace(id, d);
+                                if (result.size() > L)
+                                    result.pop();
+                            }
+                        }
+                        else
+                        {
+                            float e_d =
+                                get_E_Dist()->
+                                    compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+
+            addDistCount();
+                            if (alpha_ * e_d >= threshold)
+                            {
+                                continue;
+                            }
+
+                            float s_d = 
+                                get_S_Dist()->
+                                    compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
+
+            addDistCount();
+                            float d = alpha_ * e_d + (1 - alpha_) * s_d;
+
+                            if (threshold > d)
+                            {
+                                result.emplace(id, d);
+                                candidates.emplace(id, d);
+                                if (result.size() > L)
+                                    result.pop();
+                            }
+                        }
+                    }
+                }
+                else
+                {
+                    float e_d =
+                        get_E_Dist()->
+                            compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
+
+            addDistCount();
+                    float s_d = 
+                        get_S_Dist()->
+                            compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
+
+            addDistCount();
+                    float d = alpha_ * e_d + (1 - alpha_) * s_d;
+                    result.emplace(id, d);
+                    candidates.emplace(id, d);
+                    if (result.size() > L)
+                        result.pop();
+                }
+            }
+
+
+        }
     }
 }

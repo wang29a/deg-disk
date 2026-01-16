@@ -27,7 +27,7 @@ namespace stkq {
         uint32_t node_num = final_index_->getBaseLen();
         uint32_t max_alpha_range_len = 0;
         uint32_t max_nbr_len = 0;
-        uint32_t enterpoint_set_size = final_index_->enterpoint_set.size();
+        uint32_t enterpoint_set_size = final_index_->DEG_enterpoints.size();
         uint32_t emb_dim = final_index_->getBaseEmbDim();
         uint32_t loc_dim = final_index_->getBaseLocDim();
 
@@ -50,7 +50,7 @@ namespace stkq {
         enterpoint_set.reserve(enterpoint_set_size);
         for (unsigned i = 0; i < enterpoint_set_size; i++)
         {
-            unsigned node_id = final_index_->enterpoint_set[i];
+            unsigned node_id = final_index_->DEG_enterpoints[i]->GetId();
             enterpoint_set.emplace_back(node_id);
         }
         std::set<uint32_t> ep_set{enterpoint_set.begin(), enterpoint_set.end()};

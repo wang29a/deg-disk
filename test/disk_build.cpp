@@ -15,20 +15,29 @@ void DEG(stkq::Parameters &parameters)
     std::string base_loc_path = parameters.get<std::string>("base_loc_path");
     std::string disk_index_file = parameters.get<std::string>("disk_index_file");
     std::string disk_index_path = parameters.get<std::string>("disk_index_path");
+    std::string disk_baseline = disk_index_path + "baseline_disk.index";
     std::string disk_meta = disk_index_path + "_disk.index";
     std::string disk_topo = disk_index_path + "disk_index_graph";
     std::string disk_data = disk_index_path + "disk_index_data";
     if (parameters.get<std::string>("exc_type") == "disk")
     {
         auto *builder = new stkq::IndexBuilder(num_threads, parameters.get<float>("max_emb_distance"), parameters.get<float>("max_spatial_distance"));
+        builder->load(&base_emb_path[0], &base_loc_path[0], "", "", "", "", parameters)
+            ->init(stkq::INIT_DEG);
+        builder->peak_memory_footprint();
+        builder->save_graph_disk(stkq::TYPE::INDEX_DEG, &disk_baseline[0]);
+        builder->peak_memory_footprint();
+    // } else if (parameters.get<std::string>("exc_type") == "decouple")
+    // {
+        // auto *builder = new stkq::IndexBuilder(num_threads, parameters.get<float>("max_emb_distance"), parameters.get<float>("max_spatial_distance"));
         pipeann::AbstractNeighbor<float> *nbr_emb_handler = pipeann::get_nbr_handler<float>(pipeann::Metric::L2, "pq"); 
         nbr_emb_handler->build(disk_index_path + "emb", base_emb_path, 256);
         pipeann::AbstractNeighbor<float> *nbr_loc_handler = pipeann::get_nbr_handler<float>(pipeann::Metric::L2, "pq"); 
         nbr_loc_handler->build(disk_index_path + "loc", base_loc_path, 256);
 
-        builder->load(&base_emb_path[0], &base_loc_path[0], "", "", "", "", parameters)
-            ->init(stkq::INIT_DEG);
-        builder->peak_memory_footprint();
+        // builder->load(&base_emb_path[0], &base_loc_path[0], "", "", "", "", parameters)
+        //     ->init(stkq::INIT_DEG);
+        // builder->peak_memory_footprint();
         builder->save_graph_disk(stkq::TYPE::INDEX_DEG, &disk_meta[0], &disk_topo[0], &disk_data[0]);
         builder->peak_memory_footprint();
     }
