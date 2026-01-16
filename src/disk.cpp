@@ -211,14 +211,14 @@ namespace stkq {
 
         uint32_t single_neighbor_size = sizeof(uint32_t) + (2 * max_alpha_range_len * sizeof(int8_t));
         size_t fixed_topo_size = sizeof(uint32_t) + (max_nbr_len * single_neighbor_size);
-        uint64_t nnodes_per_sector = SECTOR_LEN / fixed_topo_size;
+        uint64_t nnodes_per_sector = PAGE_SIZE / fixed_topo_size;
         // ==========================================
         // Part 1: 写入 Meta Data (一次性写入即可，通常较小)
         // ==========================================
         // 即使是 Meta，为了对齐习惯，我们也补齐到 PageSize (可选，但为了规范建议做)
         size_t raw_meta_size = 
             sizeof(node_num) + sizeof(max_nbr_len) + sizeof(max_alpha_range_len) +
-            sizeof(enterpoint_set_size) + sizeof(emb_dim) + sizeof(loc_dim) + 
+            sizeof(enterpoint_set_size) + sizeof(emb_dim) + sizeof(loc_dim) +sizeof(nnodes_per_sector) + 
             (sizeof(uint32_t) * enterpoint_set_size); 
 
         size_t aligned_meta_size = disk::align_to_page_size(raw_meta_size);
