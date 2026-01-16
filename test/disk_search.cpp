@@ -42,9 +42,9 @@ int main(int argc, char **argv)
     // ./test/main baseline2 openimage 0.5 1 1 build
     // ./test/main deg openimage 0.5 1 1 build
 
-    if (argc != 7)
+    if (argc != 8)
     {
-        std::cout << "./disk_search disk_index_path vec_query_emb vec_query_loc exc_type"
+        std::cout << "./disk_search disk_index_path vec_query_emb vec_query_loc query_alpha query_gt thread K L"
                   << std::endl;
         exit(-1);
     }
