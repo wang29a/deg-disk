@@ -123,8 +123,8 @@ namespace disk {
             auto e1 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> diff = e1 - s1;
             std::cout << "search time: " << diff.count() / query_data.getQueryLen() << std::endl;
-            std::cout << "DistCount: " << getDistCount() << std::endl;
-            std::cout << "HopCount: " << getHopCount() << std::endl;
+            // std::cout << "DistCount: " << getDistCount() << std::endl;
+            // std::cout << "HopCount: " << getHopCount() << std::endl;
             resetDistCount();
             resetHopCount();
             std::cout << "qps: " << query_data.getQueryLen() / diff.count() << std::endl;

@@ -58,7 +58,7 @@ int main(int argc, char **argv)
 
     if (argc != 8)
     {
-        std::cout << "./disk_build vec_base_emb vec_base_loc disk_index_path maximum_spatial_distance maximum_emb_distance exc_type threads"
+        std::cout << "./disk_build vec_base_emb vec_base_loc disk_index_path ef R exc_type threads"
                   << std::endl;
         exit(-1);
     }
