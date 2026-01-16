@@ -56,6 +56,7 @@ namespace disk {
         _max_degree = max_nbr_len;
         emb_dim_ = emb_dim;
         loc_dim_ = loc_dim;
+        scratch_pool_ = std::make_unique<ScratchPool>(emb_dim_, loc_dim_);
         enterpoint_set.reserve(ep_size);
         for (size_t i = 0; i < ep_size; i ++) {
             uint32_t id;
@@ -70,6 +71,6 @@ namespace disk {
         // error checks
         assert(this->file_desc_ != -1);
         std::cerr << "Opened file : " << index_file << std::endl;
-        setup_sector_scratch();
+        // setup_sector_scratch();
     }
 }

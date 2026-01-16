@@ -138,9 +138,9 @@ namespace disk {
                     }
                 }
             }
-            aligned_free((void *)emb_scratch);
-            aligned_free((void *)loc_scratch);
-            // aligned_free((void *)sector_scratch);
+            // free_aligned((void *)emb_scratch);
+            // free_aligned((void *)loc_scratch);
+            // free_aligned((void *)sector_scratch_);
         }
         
         void init();
@@ -247,11 +247,12 @@ namespace disk {
         int file_desc_;
         io_context_t ctx_;
 
-        float *emb_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
-        float *loc_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
+        // float *emb_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
+        // float *loc_scratch = nullptr; // MUST BE AT LEAST [sizeof(T) * data_dim]
 
-        char *sector_scratch_ = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
+        // char *sector_scratch_ = nullptr; // MUST BE AT LEAST [MAX_N_SECTOR_READS * SECTOR_LEN]
         size_t sector_idx_ = 0;          // index of next [SECTOR_LEN] scratch to use
+        std::unique_ptr<ScratchPool> scratch_pool_;
 
         unsigned dist_count = 0;
         unsigned hop_count = 0;

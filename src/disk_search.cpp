@@ -48,18 +48,18 @@ namespace disk {
     }
 
     void DiskIndex::setup_sector_scratch() {
-        size_t emb_alloc_size = ROUND_UP(sizeof(float) * emb_dim_, 256);
-        size_t loc_alloc_size = ROUND_UP(sizeof(float) * loc_dim_, 256);
+        // size_t emb_alloc_size = ROUND_UP(sizeof(float) * emb_dim_, 256);
+        // size_t loc_alloc_size = ROUND_UP(sizeof(float) * loc_dim_, 256);
 
-        std::cout<< emb_alloc_size << " " << loc_alloc_size << std::endl;
-        alloc_aligned((void **)&emb_scratch, emb_alloc_size, 256);
-        alloc_aligned((void **)&loc_scratch, loc_alloc_size, 256);
-        // alloc_aligned((void **)&sector_scratch, defaults::MAX_N_SECTOR_READS * defaults::SECTOR_LEN,
+        // std::cout<< emb_alloc_size << " " << loc_alloc_size << std::endl;
+        // alloc_aligned((void **)&emb_scratch, emb_alloc_size, 256);
+        // alloc_aligned((void **)&loc_scratch, loc_alloc_size, 256);
+        // alloc_aligned((void **)&sector_scratch_, defaults::MAX_N_SECTOR_READS * defaults::SECTOR_LEN,
         //            defaults::SECTOR_LEN);
-        // ::alloc_aligned((void **)&this->_aligned_query_T, aligned_dim * sizeof(T), 8 * sizeof(T));
+        // // ::alloc_aligned((void **)&this->_aligned_query_T, aligned_dim * sizeof(T), 8 * sizeof(T));
 
-        memset(emb_scratch, 0, emb_alloc_size);
-        memset(loc_scratch, 0, loc_alloc_size);
+        // memset(emb_scratch, 0, emb_alloc_size);
+        // memset(loc_scratch, 0, loc_alloc_size);
 
     }
 
@@ -112,7 +112,8 @@ namespace disk {
 
             res.clear();
             res.resize(query_data.getQueryLen());
-            //  #pragma omp parallel for
+            // #pragma omp parallel for
+            #pragma omp parallel for schedule(dynamic, 1)
             for (unsigned i = 0; i < query_data.getQueryLen(); i++)
             {
                 alpha_ = query_data.getQueryWeightData()[i];
@@ -207,6 +208,11 @@ namespace disk {
         visited_list->Reset();
 
         bool m_first = false;
+        auto ctx = scratch_pool_->acquire();
+        auto sector_scratch_ = ctx->sector_scratch;
+        auto &sector_idx = ctx->sector_scratch;
+        auto emb_scratch = ctx->emb_scratch;
+        auto loc_scratch = ctx->emb_scratch;
 
         std::vector<unsigned> load;
         std::vector<std::pair<unsigned, char*>> load_datas;

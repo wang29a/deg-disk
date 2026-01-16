@@ -6,7 +6,10 @@
 #include <cstdlib>
 #include <cstring>
 #include <stdlib.h>
+#include <functional>
 #include <iostream>
+#include <memory>
+#include <mutex>
 #include <vector>
 #include <unistd.h> // For sysconf(_SC_PAGESIZE)
 
@@ -53,7 +56,7 @@ inline void alloc_aligned(void **ptr, size_t size, size_t align)
     *ptr = nullptr;
     *ptr = ::aligned_alloc(align, size);
 }
-inline void aligned_free(void *ptr)
+inline void free_aligned(void *ptr)
 {
     // Gopal. Must have a check here if the pointer was actually allocated by
     // _alloc_aligned
@@ -90,4 +93,109 @@ struct NodeData {
     uint32_t nnbr;
     std::vector<NbrData> nbrs;
 };
+
+struct ScratchContext {
+    float *emb_scratch = nullptr;
+    float *loc_scratch = nullptr;
+    char *sector_scratch = nullptr;
+    
+    size_t emb_size;
+    size_t loc_size;
+    size_t sector_size;
+    size_t sector_idx;
+
+    // 构造函数：负责分配内存
+    ScratchContext(size_t emb_dim, size_t loc_dim) {
+        emb_size = ROUND_UP(sizeof(float) * emb_dim, 256);
+        loc_size = ROUND_UP(sizeof(float) * loc_dim, 256);
+        // 假设 defaults::MAX_N_SECTOR_READS 和 SECTOR_LEN 是全局常量
+        size_t max_sector_reads = 32; // 示例值
+        size_t sector_len = 4096;     // 示例值
+        sector_size = max_sector_reads * sector_len;
+
+        alloc_aligned((void **)&emb_scratch, emb_size, 256);
+        alloc_aligned((void **)&loc_scratch, loc_size, 256);
+        alloc_aligned((void **)&sector_scratch, sector_size, sector_len);
+
+        reset();
+    }
+
+    // 重置内存 (每次从池中取出时调用)
+    void reset() {
+        memset(emb_scratch, 0, emb_size);
+        memset(loc_scratch, 0, loc_size);
+        sector_idx = 0;
+        // sector_scratch 通常作为读取缓冲区，可能不需要 memset，视需求而定
+    }
+
+    // 析构函数：负责释放内存
+    ~ScratchContext() {
+        if (emb_scratch) free_aligned(emb_scratch);
+        if (loc_scratch) free_aligned(loc_scratch);
+        if (sector_scratch) free_aligned(sector_scratch);
+    }
+    
+    // 禁止拷贝，防止双重释放
+    ScratchContext(const ScratchContext&) = delete;
+    ScratchContext& operator=(const ScratchContext&) = delete;
+};
+
+
+class ScratchPool {
+public:
+    ScratchPool(size_t emb_dim, size_t loc_dim) 
+        : emb_dim_(emb_dim), loc_dim_(loc_dim) {}
+
+    // 显式清理池中所有内存（通常在 DiskIndex 析构时调用）
+    void clear() {
+        std::lock_guard<std::mutex> lock(mtx_);
+        for (auto* ctx : pool_) {
+            delete ctx;
+        }
+        pool_.clear();
+    }
+
+    ~ScratchPool() {
+        clear();
+    }
+
+
+private:
+    size_t emb_dim_;
+    size_t loc_dim_;
+    std::vector<ScratchContext*> pool_;
+    std::mutex mtx_;
+
+    // 辅助函数：创建带有“自动归还”功能的智能指针
+    auto create_ptr(ScratchContext* ctx) {
+        return std::unique_ptr<ScratchContext, std::function<void(ScratchContext*)>>(
+            ctx,
+            [this](ScratchContext* ptr) {
+                std::lock_guard<std::mutex> lock(this->mtx_);
+                this->pool_.push_back(ptr);
+            }
+        );
+    }
+public:
+    // 获取一个可用的 Context
+    std::unique_ptr<ScratchContext, std::function<void(ScratchContext*)>> acquire() {
+        std::unique_lock<std::mutex> lock(mtx_);
+        
+        if (!pool_.empty()) {
+            ScratchContext* ctx = pool_.back();
+            pool_.pop_back();
+            ctx->reset(); // 重置状态
+            // 返回 unique_ptr，使用自定义删除器将对象归还给池，而不是 delete
+            return create_ptr(ctx);
+        }
+        
+        // 如果池为空，创建一个新的
+        // 注意：这里释放锁，因为分配内存可能耗时
+        lock.unlock(); 
+        ScratchContext* new_ctx = new ScratchContext(emb_dim_, loc_dim_);
+        return create_ptr(new_ctx);
+    }
+
+};
+
 }
