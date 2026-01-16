@@ -113,7 +113,7 @@ namespace disk {
             res.clear();
             res.resize(query_data.getQueryLen());
             // #pragma omp parallel for
-            #pragma omp parallel for schedule(dynamic, 1)
+            // #pragma omp parallel for schedule(dynamic, 1)
             for (unsigned i = 0; i < query_data.getQueryLen(); i++)
             {
                 alpha_ = query_data.getQueryWeightData()[i];
@@ -213,6 +213,7 @@ namespace disk {
         auto &sector_idx_ = ctx->sector_idx;
         auto emb_scratch = ctx->emb_scratch;
         auto loc_scratch = ctx->loc_scratch;
+        auto &ctx_ = ctx->ctx;
 
         std::vector<unsigned> load;
         std::vector<std::pair<unsigned, char*>> load_datas;

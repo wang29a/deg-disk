@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <libaio.h>
 #include <stdlib.h>
 #include <functional>
 #include <iostream>
@@ -98,6 +99,7 @@ struct ScratchContext {
     float *emb_scratch = nullptr;
     float *loc_scratch = nullptr;
     char *sector_scratch = nullptr;
+    io_context_t ctx = 0; // 每个 Context 拥有独立的 AIO 句柄
     
     size_t emb_size;
     size_t loc_size;
@@ -109,13 +111,21 @@ struct ScratchContext {
         emb_size = ROUND_UP(sizeof(float) * emb_dim, 256);
         loc_size = ROUND_UP(sizeof(float) * loc_dim, 256);
         // 假设 defaults::MAX_N_SECTOR_READS 和 SECTOR_LEN 是全局常量
-        size_t max_sector_reads = 64; // 示例值
-        size_t sector_len = 8192;     // 示例值
+        size_t max_events = 4096;
+        size_t max_sector_reads = 4096; // 示例值
+        size_t sector_len = defaults::SECTOR_LEN;     // 示例值
         sector_size = max_sector_reads * sector_len;
 
         alloc_aligned((void **)&emb_scratch, emb_size, 256);
         alloc_aligned((void **)&loc_scratch, loc_size, 256);
         alloc_aligned((void **)&sector_scratch, sector_size, sector_len);
+
+        // 注意：ctx 必须初始化为 0
+        ctx = 0;
+        int ret = io_setup(max_events, &ctx);
+        if (ret < 0) {
+            throw std::runtime_error("io_setup failed with error: " + std::to_string(ret));
+        }
 
         reset();
     }
