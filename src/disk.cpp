@@ -22,6 +22,7 @@ namespace stkq {
     */ 
     IndexBuilder *IndexBuilder::save_graph_disk(TYPE type, char *graph_file)
     {
+        std::cout << "save graph baseline file: " << graph_file << std::endl;
         std::fstream out(graph_file, std::ios::binary | std::ios::out);
         // type == INDEX_DEG
         uint32_t node_num = final_index_->getBaseLen();
@@ -59,7 +60,7 @@ namespace stkq {
         size_t padding_size = aligned_size - raw_meta_data_size;
         std::vector<char> buffer(aligned_size, 0);
         char* current_ptr = buffer.data();
-        std::cout<<aligned_size << " metadata size" << std::endl;
+        std::cout << aligned_size << " metadata size" << std::endl;
 
         // 复制数据到缓冲区
         auto copy_data = [&](const void* src, size_t size) {
@@ -94,9 +95,9 @@ namespace stkq {
         std::cout<< "max data size: " << max_data_size << "B max aligned size: " << max_aligned_size << "B" << std::endl;
 
         for (size_t i = 0; i < node_num; i ++) {
-            if (ep_set.find(i) != ep_set.end()) {
-                std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out.tellp()) << std::endl;
-            }
+            // if (ep_set.find(i) != ep_set.end()) {
+            //     std::cout<< "ep: " << i << " offset: " << static_cast<std::size_t>(out.tellp()) << std::endl;
+            // }
             disk::NodeData data;
             data.emb.resize(emb_dim);
             data.loc.resize(loc_dim);
@@ -172,6 +173,9 @@ namespace stkq {
     {
         // [Image of vector index file structure showing separate metadata, topology, and vector data files]
         
+        std::cout << "meta info: " << meta_file << std::endl;
+        std::cout << "index file: " << graph_file << std::endl;
+        std::cout << "vector data file: "<< data_file << std::endl;
         std::fstream out_meta(meta_file, std::ios::binary | std::ios::out);
         std::fstream out_graph(graph_file, std::ios::binary | std::ios::out);
         std::fstream out_data(data_file, std::ios::binary | std::ios::out);

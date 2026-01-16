@@ -22,8 +22,10 @@ void DEG(stkq::Parameters &parameters)
     if (parameters.get<std::string>("exc_type") == "disk")
     {
         auto *builder = new stkq::IndexBuilder(num_threads, parameters.get<float>("max_emb_distance"), parameters.get<float>("max_spatial_distance"));
+    builder->set_begin_time();
         builder->load(&base_emb_path[0], &base_loc_path[0], "", "", "", "", parameters)
             ->init(stkq::INIT_DEG);
+    builder->set_end_time();
         builder->peak_memory_footprint();
         builder->save_graph_disk(stkq::TYPE::INDEX_DEG, &disk_baseline[0]);
         builder->peak_memory_footprint();
@@ -40,6 +42,7 @@ void DEG(stkq::Parameters &parameters)
         // builder->peak_memory_footprint();
         builder->save_graph_disk(stkq::TYPE::INDEX_DEG, &disk_meta[0], &disk_topo[0], &disk_data[0]);
         builder->peak_memory_footprint();
+        std::cout << "Build cost: " << builder->GetBuildTime().count() << "s" << std::endl;
     }
     else
     {
