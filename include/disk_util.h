@@ -111,8 +111,8 @@ struct ScratchContext {
         emb_size = ROUND_UP(sizeof(float) * emb_dim, 256);
         loc_size = ROUND_UP(sizeof(float) * loc_dim, 256);
         // 假设 defaults::MAX_N_SECTOR_READS 和 SECTOR_LEN 是全局常量
-        size_t max_events = 4096;
-        size_t max_sector_reads = 4096; // 示例值
+        size_t max_events = MAX_EVENTS;
+        size_t max_sector_reads = max_events; // 示例值
         size_t sector_len = defaults::SECTOR_LEN;     // 示例值
         sector_size = max_sector_reads * sector_len;
 
@@ -140,6 +140,9 @@ struct ScratchContext {
 
     // 析构函数：负责释放内存
     ~ScratchContext() {
+        if (ctx != 0) {
+            io_destroy(ctx);
+        }
         if (emb_scratch) free_aligned(emb_scratch);
         if (loc_scratch) free_aligned(loc_scratch);
         if (sector_scratch) free_aligned(sector_scratch);

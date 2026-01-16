@@ -113,12 +113,12 @@ namespace disk {
             res.clear();
             res.resize(query_data.getQueryLen());
             // #pragma omp parallel for
-            // #pragma omp parallel for schedule(dynamic, 1)
+            #pragma omp parallel for schedule(dynamic, 1)
             for (unsigned i = 0; i < query_data.getQueryLen(); i++)
             {
-                alpha_ = query_data.getQueryWeightData()[i];
+                float alpha = query_data.getQueryWeightData()[i];
                 std::vector<stkq::Index::Neighbor> pool;
-                RouteInner(i, pool, res[i]);
+                RouteInner(i, pool, res[i], alpha);
             }
             auto e1 = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> diff = e1 - s1;
@@ -160,7 +160,7 @@ namespace disk {
     }
 
     void DiskIndex::RouteInner(unsigned int query, std::vector<stkq::Index::Neighbor> &pool,
-                                std::vector<unsigned int> &res)
+                                std::vector<unsigned int> &res, const float alpha)
     {
         /*
             需要load的请求
@@ -175,7 +175,7 @@ namespace disk {
         std::priority_queue<stkq::Index::DEG_FurtherFirst> result;
         std::priority_queue<stkq::Index::DEG_CloserFirst> tmp;
 
-        SearchAtLayer(query, visited_list, result);
+        SearchAtLayer(query, visited_list, result, alpha);
 
         // std::cout<< "result size: " << result.size() << std::endl;
 
@@ -200,7 +200,7 @@ namespace disk {
 
     void DiskIndex::SearchAtLayer(unsigned qnode,
                                 stkq::Index::VisitedList *visited_list,
-                                std::priority_queue<stkq::Index::DEG_FurtherFirst> &result)
+                                std::priority_queue<stkq::Index::DEG_FurtherFirst> &result, const float alpha)
     {
         const auto L = search_l_;
 
@@ -209,10 +209,10 @@ namespace disk {
 
         bool m_first = false;
         auto ctx = scratch_pool_->acquire();
-        auto sector_scratch_ = ctx->sector_scratch;
+        auto &sector_scratch_ = ctx->sector_scratch;
         auto &sector_idx_ = ctx->sector_idx;
-        auto emb_scratch = ctx->emb_scratch;
-        auto loc_scratch = ctx->loc_scratch;
+        auto &emb_scratch = ctx->emb_scratch;
+        auto &loc_scratch = ctx->loc_scratch;
         auto &ctx_ = ctx->ctx;
 
         std::vector<unsigned> load;
@@ -260,9 +260,9 @@ namespace disk {
                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
             addDistCount();
 
-            float cur_dist = alpha_ * cur_e_d + (1 - alpha_) * cur_s_d;
+            float cur_dist = alpha * cur_e_d + (1 - alpha) * cur_s_d;
 
-            // std::cout<< "id: " << id << " dist: " << cur_dist << " " << cur_e_d << " " << cur_s_d << " " << alpha_ << std::endl;
+            // std::cout<< "id: " << id << " dist: " << cur_dist << " " << cur_e_d << " " << cur_s_d << " " << alpha << std::endl;
 
             result.emplace(id, cur_dist);
             candidates.emplace(id, cur_dist);
@@ -270,11 +270,6 @@ namespace disk {
             visited_list->MarkAsVisited(id);
         }
         auto top1 = candidates.top();
-
-        // while (!candidates.empty()) {
-        //     candidates.pop();
-        // }
-        // candidates.push(top1);
 
         while (!candidates.empty())
         {
@@ -287,7 +282,6 @@ namespace disk {
             if (candidate.GetDistance() > lower_bound) {
                 break;
             }
-
             auto candidate_id = candidate.GetId();
             // std::cout<< candidate.GetDistance() << std::endl;
             candidates.pop();
@@ -347,14 +341,14 @@ namespace disk {
                     bool search_flag = false;
                     for (int i = 0; i < use_range.size(); i++)
                     {
-                        if (alpha_ * 100 >= use_range[i].first && alpha_ * 100 <= use_range[i].second) {
+                        if (alpha * 100 >= use_range[i].first && alpha * 100 <= use_range[i].second) {
                             search_flag = true;
                             break;
                         }
-                        if (alpha_ * 100 < use_range[i].first) {
+                        if (alpha * 100 < use_range[i].first) {
                             break;
                         }
-                        if (alpha_ * 100 > use_range[i].second) {
+                        if (alpha * 100 > use_range[i].second) {
                             continue;
                         }
                     }
@@ -409,8 +403,7 @@ namespace disk {
                             get_S_Dist()->
                                 compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
 
-            addDistCount();
-                        if ((1 - alpha_) * s_d >= threshold)
+                        if ((1 - alpha) * s_d >= threshold)
                         {
                             continue;
                         }
@@ -419,8 +412,7 @@ namespace disk {
                             get_E_Dist()->
                                 compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
 
-            addDistCount();
-                        float d = alpha_ * e_d + (1 - alpha_) * s_d;
+                        float d = alpha * e_d + (1 - alpha) * s_d;
 
                         if (threshold > d)
                         {
@@ -434,23 +426,21 @@ namespace disk {
                     {
                         float threshold = result.top().GetDistance();
 
-                        if (alpha_ <= 0.5)
+                        if (alpha <= 0.5)
                         {
                             float s_d = 
                                 get_S_Dist()->
                                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_, loc_scratch, loc_dim_);
 
-            addDistCount();
-                            if ((1 - alpha_) * s_d >= threshold)
+                            if ((1 - alpha) * s_d >= threshold)
                             {
                                 continue;
                             }
 
-            addDistCount();
                             float e_d =
                                 get_E_Dist()->
                                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
-                            float d = alpha_ * e_d + (1 - alpha_) * s_d;
+                            float d = alpha * e_d + (1 - alpha) * s_d;
 
                             if (threshold > d)
                             {
@@ -466,8 +456,7 @@ namespace disk {
                                 get_E_Dist()->
                                     compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
 
-            addDistCount();
-                            if (alpha_ * e_d >= threshold)
+                            if (alpha * e_d >= threshold)
                             {
                                 continue;
                             }
@@ -476,8 +465,7 @@ namespace disk {
                                 get_S_Dist()->
                                     compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
 
-            addDistCount();
-                            float d = alpha_ * e_d + (1 - alpha_) * s_d;
+                            float d = alpha * e_d + (1 - alpha) * s_d;
 
                             if (threshold > d)
                             {
@@ -495,13 +483,11 @@ namespace disk {
                         get_E_Dist()->
                             compare(query_data.getQueryEmbData() + (size_t)qnode*emb_dim_, emb_scratch, emb_dim_);
 
-            addDistCount();
                     float s_d = 
                         get_S_Dist()->
                             compare(query_data.getQueryLocData() + (size_t)qnode*loc_dim_,loc_scratch, loc_dim_);
 
-            addDistCount();
-                    float d = alpha_ * e_d + (1 - alpha_) * s_d;
+                    float d = alpha * e_d + (1 - alpha) * s_d;
                     result.emplace(id, d);
                     candidates.emplace(id, d);
                     if (result.size() > L)
